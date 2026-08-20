@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 #
 # Minecraft 1.6.4 MITE + FishModLoader 全自动安装脚本
-#   curl -fsSL https://raw.githubusercontent.com/<OWNER>/<REPO>/main/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/postyizhan/MITE-Installer/main/install.sh | bash
 #
 # 兼容基线: bash 3.2 (macOS 自带), 不使用关联数组 / ${var^^} / mapfile
 # 支持: Linux (x64/arm64), macOS (Intel/Apple Silicon)
@@ -26,6 +26,11 @@ MC_ASSET_TOTAL_SIZE="153475165"
 MITE_ZIP_NAME="MITE 1.6.4 R196.zip"
 MITE_ZIP_URL="https://avernite.ca/MITE/MITE%201.6.4%20R196.zip"
 MITE_ZIP_SHA256="fb7ad265d05749e0cd1e54938f6c36ecbe9ea1d4d90d4a04c519615e1e0218c3"
+
+# MITE 镜像源 (本仓库 GitHub / Gitee 的 release 资产, 与官方包逐字节一致, 已实测 sha256)
+MITE_REPO="postyizhan/MITE-Installer"
+MITE_RELEASE_TAG="MITE_1.6.4_R196"
+MITE_RELEASE_FILE="MITE.1.6.4.R196.zip"
 
 # FishModLoader 内置回退版本与已知哈希
 FML_REPO="MinecraftIsTooEasy/FishModLoader"
@@ -81,6 +86,7 @@ MSG_USAGE_BODY="  bash install.sh [选项]
 下载源名称:
   原版: official | bmclapi
   FML : github | ghproxy | gh-proxy | ghfast | hk
+  MITE: official | gitee | github | ghproxy | gh-proxy | ghfast | hk
   多类可用逗号分隔, 例: --source bmclapi,hk"
 MSG_ERR_PREFIX="错误"
 MSG_WARN_PREFIX="警告"
@@ -200,6 +206,7 @@ Options:
 Source names:
   vanilla: official | bmclapi
   FML    : github | ghproxy | gh-proxy | ghfast | hk
+  MITE   : official | gitee | github | ghproxy | gh-proxy | ghfast | hk
   Comma-separated, e.g. --source bmclapi,hk"
 MSG_ERR_PREFIX="ERROR"
 MSG_WARN_PREFIX="WARN"
@@ -574,12 +581,17 @@ check_disk() {
 #   BMCLAPI 必须跟随 302 (-L), 已实测。
 # FML 源: github / ghproxy / gh-proxy / ghfast / hk
 #   github.com 直连在国内常超时, 已实测, 故默认带镜像。
+# MITE 源: official / gitee + FML 的 github 系镜像
+#   gitee 与 github 均为本仓库 release 资产, 与官方包逐字节一致, 已实测。
 
 VANILLA_SOURCES="official bmclapi"
 # 顺序即 --no-speedtest 时的默认优先级, 按实测速度排(同一网络下对 45MB 的 HDS 核心):
 #   ghfast 246 KB/s > gh-proxy 178 KB/s > hk 43 KB/s > github 直连 33 KB/s
 # GitHub 直连放最后: 它在国内既慢又常超时, 不该是默认首选。
 FML_SOURCES="ghfast gh-proxy ghproxy hk github"
+# MITE 源: gitee(国内直连镜像) + FML 的 github 系镜像 + official(官网)。
+# 顺序即 --no-speedtest 时的默认优先级: 国内源/代理在前, 官方站放最后。
+MITE_SOURCES="gitee ghfast gh-proxy ghproxy hk github official"
 
 # 原版: meta 基址
 src_meta_base() {
@@ -629,6 +641,15 @@ fml_wrap_url() {
   esac
 }
 
+# MITE: 各源实际 URL (official 为官网, gitee 为国内镜像, 其余走 github 系镜像)
+mite_url() {
+  case "$1" in
+    official) printf '%s' "$MITE_ZIP_URL" ;;
+    gitee)    printf 'https://gitee.com/%s/releases/download/%s/%s' "$MITE_REPO" "$MITE_RELEASE_TAG" "$MITE_RELEASE_FILE" ;;
+    *)        fml_wrap_url "$1" "https://github.com/${MITE_REPO}/releases/download/${MITE_RELEASE_TAG}/${MITE_RELEASE_FILE}" ;;
+  esac
+}
+
 # ============================== 测速 ==============================
 # 对每个源发一个 256 KiB 的 Range 请求, 用实际收到的字节数 / 耗时算速度。
 # 镜像若不支持 Range 会返回整文件, 此时被 --max-time 截断也无妨:
@@ -642,6 +663,7 @@ probe_url() {
   case "$1" in
     vanilla) printf '%s/v1/objects/%s/client.jar' "$(src_object_base "$2")" "$MC_CLIENT_SHA1" ;;
     fml)     fml_wrap_url "$2" "https://github.com/${FML_REPO}/releases/download/${FML_FALLBACK_VERSION}/FishModLoader-v${FML_FALLBACK_VERSION}.jar" ;;
+    mite)    mite_url "$2" ;;
   esac
 }
 
@@ -659,6 +681,7 @@ measure_source() {
 
 SPEED_BEST_VANILLA=""
 SPEED_BEST_FML=""
+SPEED_BEST_MITE=""
 
 # speedtest_category <类别> <源列表>  -> 设置 SPEED_BEST_*
 speedtest_category() {
@@ -678,12 +701,14 @@ speedtest_category() {
   case "$_cat" in
     vanilla) SPEED_BEST_VANILLA="$_best" ;;
     fml)     SPEED_BEST_FML="$_best" ;;
+    mite)    SPEED_BEST_MITE="$_best" ;;
   esac
 }
 
 # 最终生效的源顺序 (第一个为首选, 其余为回退)
 VANILLA_ORDER=""
 FML_ORDER=""
+MITE_ORDER=""
 
 # 把 <首选> 提到列表最前
 promote_first() {
@@ -706,16 +731,18 @@ source_from_opt() {
 }
 
 select_sources() {
-  _v_forced=""; _f_forced=""
+  _v_forced=""; _f_forced=""; _m_forced=""
   if [ -n "$OPT_SOURCE" ]; then
     _v_forced=$(source_from_opt "$VANILLA_SOURCES") || _v_forced=""
     _f_forced=$(source_from_opt "$FML_SOURCES") || _f_forced=""
+    _m_forced=$(source_from_opt "$MITE_SOURCES") || _m_forced=""
   fi
 
-  if [ -n "$_v_forced" ] && [ -n "$_f_forced" ]; then
-    log_info "$(printf "$MSG_SOURCE_FORCED" "$_v_forced, $_f_forced")"
+  if [ -n "$_v_forced" ] && [ -n "$_f_forced" ] && [ -n "$_m_forced" ]; then
+    log_info "$(printf "$MSG_SOURCE_FORCED" "$_v_forced, $_f_forced, $_m_forced")"
     VANILLA_ORDER=$(promote_first "$_v_forced" "$VANILLA_SOURCES")
     FML_ORDER=$(promote_first "$_f_forced" "$FML_SOURCES")
+    MITE_ORDER=$(promote_first "$_m_forced" "$MITE_SOURCES")
     return
   fi
 
@@ -723,23 +750,27 @@ select_sources() {
     log_info "$MSG_SPEEDTEST_SKIP"
     VANILLA_ORDER="$VANILLA_SOURCES"
     FML_ORDER="$FML_SOURCES"
+    MITE_ORDER="$MITE_SOURCES"
   else
     log_info "$MSG_SPEEDTEST_HEAD"
     speedtest_category vanilla "$VANILLA_SOURCES"
     speedtest_category fml "$FML_SOURCES"
-    if [ -z "$SPEED_BEST_VANILLA" ] && [ -z "$SPEED_BEST_FML" ]; then
+    speedtest_category mite "$MITE_SOURCES"
+    if [ -z "$SPEED_BEST_VANILLA" ] && [ -z "$SPEED_BEST_FML" ] && [ -z "$SPEED_BEST_MITE" ]; then
       die "$MSG_ALL_SOURCES_FAIL"
     fi
-    VANILLA_ORDER="$VANILLA_SOURCES"; FML_ORDER="$FML_SOURCES"
+    VANILLA_ORDER="$VANILLA_SOURCES"; FML_ORDER="$FML_SOURCES"; MITE_ORDER="$MITE_SOURCES"
     [ -n "$SPEED_BEST_VANILLA" ] && VANILLA_ORDER=$(promote_first "$SPEED_BEST_VANILLA" "$VANILLA_SOURCES")
     [ -n "$SPEED_BEST_FML" ] && FML_ORDER=$(promote_first "$SPEED_BEST_FML" "$FML_SOURCES")
+    [ -n "$SPEED_BEST_MITE" ] && MITE_ORDER=$(promote_first "$SPEED_BEST_MITE" "$MITE_SOURCES")
   fi
 
   # --source 只指定了一类时, 另一类沿用测速结果
   [ -n "$_v_forced" ] && VANILLA_ORDER=$(promote_first "$_v_forced" "$VANILLA_SOURCES")
   [ -n "$_f_forced" ] && FML_ORDER=$(promote_first "$_f_forced" "$FML_SOURCES")
+  [ -n "$_m_forced" ] && MITE_ORDER=$(promote_first "$_m_forced" "$MITE_SOURCES")
 
-  log_info "$(printf "$MSG_SPEEDTEST_PICK" "$(printf '%s' "$VANILLA_ORDER" | awk '{print $1}') / $(printf '%s' "$FML_ORDER" | awk '{print $1}')")"
+  log_info "$(printf "$MSG_SPEEDTEST_PICK" "$(printf '%s' "$VANILLA_ORDER" | awk '{print $1}') / $(printf '%s' "$FML_ORDER" | awk '{print $1}') / $(printf '%s' "$MITE_ORDER" | awk '{print $1}')")"
 }
 
 # ============================== 下载 ==============================
@@ -1360,7 +1391,10 @@ prepare_mite() {
     _zip="$OPT_MITE_ZIP"
   else
     _zip="$TMP_ROOT/$MITE_ZIP_NAME"
-    fetch_multi "$_zip" "" "$MITE_ZIP_SHA256" "" "$MITE_ZIP_URL" || return 1
+    _urls=""
+    for _s in $MITE_ORDER; do _urls="$_urls $(mite_url "$_s")"; done
+    # shellcheck disable=SC2086
+    fetch_multi "$_zip" "" "$MITE_ZIP_SHA256" "" $_urls || return 1
   fi
 
   unpack_zip "$_zip" "$_stage" || return 1

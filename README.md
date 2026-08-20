@@ -3,6 +3,10 @@
 Minecraft 1.6.4 + MITE R196 + FishModLoader 的全自动安装脚本，支持 Linux 与 macOS（含 Apple Silicon）。单文件、零外部依赖、多语言。
 
 ```bash
+# Codeberg
+curl -fsSL https://codeberg.org/postyizhan/MITE-Installer/raw/branch/main/install.sh | bash
+
+# GitHub
 curl -fsSL https://raw.githubusercontent.com/postyizhan/MITE-Installer/main/install.sh | bash
 
 # jsDelivr CDN
@@ -65,7 +69,12 @@ bash install.sh --client --dir ~/mc-mite
 
 顺序即 `--no-speedtest` 时的优先级，按实测速度排（同一网络下对 45 MB 的 HDS 核心）：ghfast 246 KB/s > gh-proxy 178 KB/s > hk 43 KB/s > github 直连 33 KB/s。
 
-**MITE** 只有官网一个公开源（`avernite.ca`），可用 `--mite-zip` 指定本地文件。
+**MITE**（官网 + 本仓库 GitHub/Gitee 镜像，内容与官方包逐字节一致，已实测 sha256 校验通过）
+- `official` — 官网 `avernite.ca`
+- `gitee` — Gitee release 镜像（国内直连）
+- `github` · `ghfast` · `gh-proxy` · `ghproxy` · `hk` — GitHub release 直连 / 代理镜像
+
+也可用 `--mite-zip` 直接指定本地文件跳过下载。
 
 ## 产物
 
