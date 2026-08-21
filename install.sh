@@ -85,7 +85,7 @@ MSG_COMMUNITY_TELEGRAM="Telegram: https://t.me/moddedmite"
 MSG_COMMUNITY_QQ1="1 群 (最大的 MITE Mod 群聊): 795728891"
 MSG_COMMUNITY_QQ2="2 群: 1009606363"
 MSG_COMMUNITY_QQ_CHANNEL="https://pd.qq.com/s/gti0oomau (频道号: ModdedMITE327)"
-MSG_COMMUNITY_DISCORD=": https://discord.gg/2tSuFhZxS8"
+MSG_COMMUNITY_DISCORD="https://discord.gg/2tSuFhZxS8"
 MSG_FREE_NOTICE="MITE 本体、Mod、整合包与本脚本均完全免费, 如有发现倒卖请联系我们。"
 MSG_USAGE_HEAD="用法"
 MSG_USAGE_BODY="  bash install.sh [选项]
@@ -150,6 +150,8 @@ MSG_SRC_LABEL_MITE="MITE 安装包下载源"
 MSG_SRC_LABEL_TRANSLATION="简体中文语言包下载源"
 MSG_FINAL_SOURCES="最终下载源: 原版=%s, FishModLoader=%s, MITE=%s, 汉化=%s"
 MSG_SOURCE_FORCED="已指定下载源: %s"
+MSG_INVALID_SOURCE="无效的下载源名称: %s"
+MSG_INVALID_SOURCE_FORMAT="下载源列表格式无效, 请使用逗号分隔名称"
 MSG_ALL_SOURCES_FAIL="所有下载源均不可用, 请检查网络连接"
 MSG_STEP_VANILLA="准备原版 %s 客户端"
 MSG_FOUND_LOCAL_JAR="发现本地原版 jar: %s"
@@ -179,6 +181,7 @@ MSG_STEP_RESPACK="安装 MITE 资源包"
 MSG_TRANSLATION_FETCH="下载简体中文语言包"
 MSG_TRANSLATION_MERGE="将简体中文翻译合并进 MITE 资源包"
 MSG_TRANSLATION_MISSING="简体中文语言包缺少必需文件: %s"
+MSG_TRANSLATION_UNSAFE="简体中文语言包包含不安全的 ZIP 路径或链接"
 MSG_TRANSLATION_FAILED="简体中文语言包安装失败, 原有 MITE 资源包未改动"
 MSG_STEP_JAVA="准备 Java 运行环境"
 MSG_JAVA_FOUND="已找到 Java %s: %s"
@@ -306,6 +309,8 @@ MSG_SRC_LABEL_MITE="MITE bundle source"
 MSG_SRC_LABEL_TRANSLATION="Simplified Chinese translation source"
 MSG_FINAL_SOURCES="Final sources: vanilla=%s, FishModLoader=%s, MITE=%s, Chinese=%s"
 MSG_SOURCE_FORCED="Using source: %s"
+MSG_INVALID_SOURCE="Invalid download source name: %s"
+MSG_INVALID_SOURCE_FORMAT="Invalid source list format; use comma-separated names"
 MSG_ALL_SOURCES_FAIL="No download source reachable, please check your network"
 MSG_STEP_VANILLA="Preparing vanilla %s client"
 MSG_FOUND_LOCAL_JAR="Found local vanilla jar: %s"
@@ -335,6 +340,7 @@ MSG_STEP_RESPACK="Installing MITE resource pack"
 MSG_TRANSLATION_FETCH="Downloading Simplified Chinese translation"
 MSG_TRANSLATION_MERGE="Merging Simplified Chinese translation into the MITE resource pack"
 MSG_TRANSLATION_MISSING="Translation archive is missing required file: %s"
+MSG_TRANSLATION_UNSAFE="Translation archive contains an unsafe ZIP path or link"
 MSG_TRANSLATION_FAILED="Translation installation failed; the existing MITE resource pack was left unchanged"
 MSG_STEP_JAVA="Preparing Java runtime"
 MSG_JAVA_FOUND="Found Java %s: %s"
@@ -597,31 +603,55 @@ OPT_VERSION=0
 parse_args() {
   while [ $# -gt 0 ]; do
     case "$1" in
-      --dir)         OPT_DIR="${2:-}"; shift 2 ;;
-      --dir=*)       OPT_DIR="${1#*=}"; shift ;;
-      --server-dir)  OPT_SERVER_DIR="${2:-}"; shift 2 ;;
-      --server-dir=*) OPT_SERVER_DIR="${1#*=}"; shift ;;
-      --lang)        OPT_LANG="${2:-}"; shift 2 ;;
-      --lang=*)      OPT_LANG="${1#*=}"; shift ;;
+      --dir)
+        [ $# -ge 2 ] && [ -n "$2" ] || { printf 'Missing argument for --dir\n' >&2; return 2; }
+        OPT_DIR="$2"; shift 2 ;;
+      --dir=*)
+        OPT_DIR="${1#*=}"; [ -n "$OPT_DIR" ] || { printf 'Missing argument for --dir\n' >&2; return 2; }; shift ;;
+      --server-dir)
+        [ $# -ge 2 ] && [ -n "$2" ] || { printf 'Missing argument for --server-dir\n' >&2; return 2; }
+        OPT_SERVER_DIR="$2"; shift 2 ;;
+      --server-dir=*)
+        OPT_SERVER_DIR="${1#*=}"; [ -n "$OPT_SERVER_DIR" ] || { printf 'Missing argument for --server-dir\n' >&2; return 2; }; shift ;;
+      --lang)
+        [ $# -ge 2 ] && [ -n "$2" ] || { printf 'Missing argument for --lang\n' >&2; return 2; }
+        OPT_LANG="$2"; shift 2 ;;
+      --lang=*)
+        OPT_LANG="${1#*=}"; [ -n "$OPT_LANG" ] || { printf 'Missing argument for --lang\n' >&2; return 2; }; shift ;;
       --client)      OPT_MODE="client"; shift ;;
       --server)      OPT_MODE="server"; shift ;;
       --both)        OPT_MODE="both"; shift ;;
-      --source)      OPT_SOURCE="${2:-}"; shift 2 ;;
-      --source=*)    OPT_SOURCE="${1#*=}"; shift ;;
-      --vanilla-jar) OPT_VANILLA_JAR="${2:-}"; shift 2 ;;
-      --vanilla-jar=*) OPT_VANILLA_JAR="${1#*=}"; shift ;;
-      --mite-zip)    OPT_MITE_ZIP="${2:-}"; shift 2 ;;
-      --mite-zip=*)  OPT_MITE_ZIP="${1#*=}"; shift ;;
-      --fml-version) OPT_FML_VERSION="${2:-}"; shift 2 ;;
-      --fml-version=*) OPT_FML_VERSION="${1#*=}"; shift ;;
-      --fml-installer) OPT_FML_INSTALLER="${2:-}"; shift 2 ;;
-      --fml-installer=*) OPT_FML_INSTALLER="${1#*=}"; shift ;;
+      --source)
+        [ $# -ge 2 ] && [ -n "$2" ] || { printf 'Missing argument for --source\n' >&2; return 2; }
+        OPT_SOURCE="$2"; shift 2 ;;
+      --source=*)
+        OPT_SOURCE="${1#*=}"; [ -n "$OPT_SOURCE" ] || { printf 'Missing argument for --source\n' >&2; return 2; }; shift ;;
+      --vanilla-jar)
+        [ $# -ge 2 ] && [ -n "$2" ] || { printf 'Missing argument for --vanilla-jar\n' >&2; return 2; }
+        OPT_VANILLA_JAR="$2"; shift 2 ;;
+      --vanilla-jar=*)
+        OPT_VANILLA_JAR="${1#*=}"; [ -n "$OPT_VANILLA_JAR" ] || { printf 'Missing argument for --vanilla-jar\n' >&2; return 2; }; shift ;;
+      --mite-zip)
+        [ $# -ge 2 ] && [ -n "$2" ] || { printf 'Missing argument for --mite-zip\n' >&2; return 2; }
+        OPT_MITE_ZIP="$2"; shift 2 ;;
+      --mite-zip=*)
+        OPT_MITE_ZIP="${1#*=}"; [ -n "$OPT_MITE_ZIP" ] || { printf 'Missing argument for --mite-zip\n' >&2; return 2; }; shift ;;
+      --fml-version)
+        [ $# -ge 2 ] && [ -n "$2" ] || { printf 'Missing argument for --fml-version\n' >&2; return 2; }
+        OPT_FML_VERSION="$2"; shift 2 ;;
+      --fml-version=*)
+        OPT_FML_VERSION="${1#*=}"; [ -n "$OPT_FML_VERSION" ] || { printf 'Missing argument for --fml-version\n' >&2; return 2; }; shift ;;
+      --fml-installer)
+        [ $# -ge 2 ] && [ -n "$2" ] || { printf 'Missing argument for --fml-installer\n' >&2; return 2; }
+        OPT_FML_INSTALLER="$2"; shift 2 ;;
+      --fml-installer=*)
+        OPT_FML_INSTALLER="${1#*=}"; [ -n "$OPT_FML_INSTALLER" ] || { printf 'Missing argument for --fml-installer\n' >&2; return 2; }; shift ;;
       --force-download) OPT_FORCE_DOWNLOAD=1; shift ;;
       --no-speedtest)   OPT_NO_SPEEDTEST=1; shift ;;
       --yes|-y)      OPT_YES=1; shift ;;
       --version|-V)  OPT_VERSION=1; shift ;;
       --help|-h)     OPT_HELP=1; shift ;;
-      *) printf 'Unknown option: %s\n' "$1" >&2; OPT_HELP=1; shift ;;
+      *) printf 'Unknown option: %s\n' "$1" >&2; return 2 ;;
     esac
   done
 }
@@ -671,7 +701,10 @@ preflight() {
 
   _missing=""
   have curl || _missing="$_missing curl"
-  [ -n "$UNZIP_TOOL" ] || _missing="$_missing unzip/python3"
+  if [ "$MODE" = "client" ] || [ "$MODE" = "both" ]; then
+    [ -n "$UNZIP_TOOL" ] || _missing="$_missing unzip/python3/jar"
+    [ -n "$ZIP_TOOL" ] || _missing="$_missing zip/python3/jar"
+  fi
   [ -n "$(sha1_of /dev/null)" ] || _missing="$_missing shasum/sha1sum/openssl"
   have awk || _missing="$_missing awk"
   if [ -n "$_missing" ]; then
@@ -873,8 +906,26 @@ source_from_opt() {
   return 1
 }
 
+validate_source_option() {
+  local _tok _s _valid
+  [ -n "$OPT_SOURCE" ] || return 0
+  case "$OPT_SOURCE" in
+    ,*|*,|*,,*) log_err "$MSG_INVALID_SOURCE_FORMAT"; return 1 ;;
+  esac
+  for _tok in $(printf '%s' "$OPT_SOURCE" | tr ',' ' '); do
+    _valid=0
+    [ -n "$_tok" ] || { log_err "$(printf "$MSG_INVALID_SOURCE" "$_tok")"; return 1; }
+    for _s in $VANILLA_SOURCES $FML_SOURCES $MITE_SOURCES $TRANSLATION_SOURCES; do
+      if [ "$(lower "$_tok")" = "$_s" ]; then _valid=1; break; fi
+    done
+    [ "$_valid" = "1" ] || { log_err "$(printf "$MSG_INVALID_SOURCE" "$_tok")"; return 1; }
+  done
+  return 0
+}
+
 select_sources() {
   local _v_pick _f_pick _m_pick _t_pick _force_ready _all_failed
+  validate_source_option || return 2
   _v_forced=""; _f_forced=""; _m_forced=""; _t_forced=""
   _v_pick=""; _f_pick=""; _m_pick=""; _t_pick=""
   if [ -n "$OPT_SOURCE" ]; then
@@ -1440,6 +1491,66 @@ with zipfile.ZipFile(z) as f:
   esac
 }
 
+# list_zip_entries <zip>  -> 输出 ZIP 条目, 供安装后的自检使用。
+list_zip_entries() {
+  local _z
+  _z="$1"
+  case "$UNZIP_TOOL" in
+    unzip)   unzip -Z1 "$_z" 2>/dev/null ;;
+    python3) MITE_ZIP="$_z" python3 -c 'import os, zipfile; print("\n".join(z.filename for z in zipfile.ZipFile(os.environ["MITE_ZIP"]).infolist()))' ;;
+    jar)     jar tf "$_z" 2>/dev/null ;;
+    *)       return 1 ;;
+  esac
+}
+
+# validate_zip_entries <zip>  -> 拒绝路径穿越和符号链接条目。
+# 翻译包跟随远端 master 更新，没有固定哈希，解压前必须先做结构安全检查。
+validate_zip_entries() {
+  local _z _entry _list _verbose
+  _z="$1"
+  if [ "$HAS_PY3" = "1" ]; then
+    MITE_ZIP="$_z" python3 -c '
+import os, sys, zipfile
+z = os.environ["MITE_ZIP"]
+try:
+    with zipfile.ZipFile(z) as f:
+        for info in f.infolist():
+            name = info.filename.replace("\\", "/")
+            parts = [p for p in name.split("/") if p not in ("", ".")]
+            mode = (info.external_attr >> 16) & 0o170000
+            drive_absolute = len(name) >= 3 and name[1] == ":" and name[2] == "/"
+            if name.startswith("/") or drive_absolute or name.startswith("../") or "/../" in name or name.endswith("/..") or "\\" in info.filename or ".." in parts or mode == 0o120000:
+                raise ValueError("unsafe ZIP entry: " + info.filename)
+except (OSError, ValueError, zipfile.BadZipFile) as exc:
+    print(exc, file=sys.stderr)
+    sys.exit(1)
+' || return 1
+    return 0
+  fi
+
+  if [ "$UNZIP_TOOL" = "unzip" ]; then
+    _list=$(unzip -Z1 "$_z" 2>/dev/null) || return 1
+    # Info-ZIP exposes Unix symlink mode as 120xxx in verbose central-directory data.
+    # This covers systems that have unzip but no Python validator.
+    _verbose=$(unzip -Z -v "$_z" 2>/dev/null) || return 1
+    if ! printf '%s\n' "$_verbose" | awk '/Unix file attributes \(12[0-7][0-7][0-7][0-7] octal\)/ { bad=1 } END { exit bad+0 }'; then
+      return 1
+    fi
+  elif [ "$UNZIP_TOOL" = "jar" ]; then
+    _list=$(jar tf "$_z" 2>/dev/null) || return 1
+  else
+    return 1
+  fi
+  while IFS= read -r _entry; do
+    case "$_entry" in
+      /*|?:/*|../*|*/../*|*/..|..|*\\*) return 1 ;;
+    esac
+  done <<EOF
+$_list
+EOF
+  return 0
+}
+
 # pack_zip <目标zip> <源目录>   目录内容打成 zip (不含顶层目录本身)
 # MITE 客户端 jar 用 `jar cf` 语义: 不保留原 MANIFEST。
 pack_zip() {
@@ -1483,6 +1594,10 @@ translation_extract() {
   local _zip _stage _missing
   _zip="$1"; _stage="$2"
   rm -rf "$_stage"; mkdir -p "$_stage"
+  if ! validate_zip_entries "$_zip"; then
+    log_warn "$MSG_TRANSLATION_UNSAFE"
+    return 1
+  fi
   unpack_zip "$_zip" "$_stage" || return 1
 
   TRANSLATION_LANG_FILE=$(find "$_stage" -type f -path '*/zh_cn/MITE.lang' 2>/dev/null | head -1)
@@ -1533,6 +1648,7 @@ merge_translation_resource_pack() {
   _base="$1"; _out="$2"
   _stage="$TMP_ROOT/respack-merge"
   rm -rf "$_stage"; mkdir -p "$_stage"
+  mkdir -p "$(dirname "$_out")" || return 1
   unpack_zip "$_base" "$_stage" || return 1
 
   mkdir -p "$_stage/assets/minecraft/lang"
@@ -1719,7 +1835,7 @@ prepare_mite() {
   unpack_zip "$_zip" "$_stage" || return 1
 
   # zip 内层级可能带一层 "MITE 1.6.4 Installation Files/", 找到含 class/ 的目录
-  _found=$(find "$_stage" -maxdepth 4 -type d -name class 2>/dev/null | head -1)
+  _found=$(find "$_stage" -type d -name class 2>/dev/null | head -1)
   [ -n "$_found" ] || { log_err "MITE class/ not found in archive"; return 1; }
   MITE_SRC_DIR=$(dirname "$_found")
   log_dim "  MITE: $(basename "$MITE_SRC_DIR")"
@@ -1731,9 +1847,10 @@ prepare_mite() {
 #   1) 解压原版 jar  2) 删 META-INF/(去签名, 否则改过的 jar 会因签名校验失败)
 #   3) 覆盖 class/   4) jar cf 重打包(客户端不保留 MANIFEST, 只有 HDS 服务端用 cmf)
 repack_mite_jar() {
-  local _vanilla _out _stage
+  local _vanilla _out _stage _tmpout
   _vanilla="$1"; _out="$2"
   _stage="$TMP_ROOT/repack"
+  _tmpout="${_out}.tmp.$$"
   rm -rf "$_stage"; mkdir -p "$_stage"
 
   unpack_zip "$_vanilla" "$_stage" || return 1
@@ -1748,7 +1865,10 @@ repack_mite_jar() {
 
   log_dim "  $(printf "$MSG_REPACK_ZIP" "$(basename "$_out")")"
   mkdir -p "$(dirname "$_out")"
-  pack_zip "$_out" "$_stage" || return 1
+  rm -f "$_tmpout"
+  pack_zip "$_tmpout" "$_stage" || return 1
+  [ -s "$_tmpout" ] || return 1
+  mv -f "$_tmpout" "$_out" || return 1
   rm -rf "$_stage"
   [ -s "$_out" ] || return 1
   return 0
@@ -1875,7 +1995,8 @@ write_version_json() {
   _out="$1"
   _src="$FML_CONFIG_JSON"
   mkdir -p "$(dirname "$_out")"
-  _tmp="$TMP_ROOT/verjson.$$"
+  # 临时文件与目标保持同一目录, 保证最终 mv 在跨平台环境下都是原子的。
+  _tmp="${_out}.tmp.$$"
 
   _declared=$(awk -F'"' '/net\.xiaoyu233\.fishmodloader:fishmodloader:/{
       n = split($4, a, ":"); print a[3]; exit }' "$_src")
@@ -2082,12 +2203,12 @@ jre_try_adoptium() {
 #
 # 每个源都自带可校验的 sha256, 不做无校验下载。
 download_portable_jre() {
-  local _os _arch _img _rt _tar _top _ok
+  local _os _arch _img _rt _tar _top _ok _candidate
   _os="$OS_NAME"; [ "$_os" = "osx" ] && _os="mac"
   _arch="$JAVA_NEED_ARCH"
   _img="jre"
-  # 无 zip 也无 python3 时, 打包要靠 jar, 那就得下 JDK
-  if [ -z "$ZIP_TOOL" ]; then
+  # 客户端若需要打包且没有 zip/python3, 才考虑 JDK; 服务端从不打包。
+  if { [ "$MODE" = "client" ] || [ "$MODE" = "both" ]; } && [ -z "$ZIP_TOOL" ]; then
     log_warn "$MSG_NEED_JDK_FOR_JAR"
     _img="jdk"
   fi
@@ -2113,7 +2234,10 @@ download_portable_jre() {
   tar -xzf "$_tar" -C "$_rt" || return 1
 
   # 压缩包内有一层顶层目录; macOS 的包还多一层 Contents/Home
-  _top=$(find "$_rt" -maxdepth 1 -mindepth 1 -type d | head -1)
+  _top=""
+  for _candidate in "$_rt"/*; do
+    [ -d "$_candidate" ] && { _top="$_candidate"; break; }
+  done
   if [ -n "$_top" ]; then
     if [ -d "$_top/Contents/Home" ]; then
       (cd "$_top/Contents/Home" && tar cf - .) | (cd "$_rt" && tar xf -)
@@ -2170,7 +2294,7 @@ prepare_java() {
 offline_uuid() {
   local _name _md5
   _name="$1"
-  if have md5; then _md5=$(printf 'OfflinePlayer:%s' "$_name" | md5)
+  if have md5; then _md5=$(printf 'OfflinePlayer:%s' "$_name" | md5 | awk '{print $NF}')
   elif have md5sum; then _md5=$(printf 'OfflinePlayer:%s' "$_name" | md5sum | awk '{print $1}')
   elif have openssl; then _md5=$(printf 'OfflinePlayer:%s' "$_name" | openssl dgst -md5 | awk '{print $NF}')
   else printf '00000000000040008000000000000000'; return; fi
@@ -2221,8 +2345,17 @@ JAVA_BIN="$JAVA_BIN"
 
 PLAYER="\${1:-Player}"
 MEM="\${2:-2048}"
-UUID="\$(printf 'OfflinePlayer:%s' "\$PLAYER" | { md5 2>/dev/null || md5sum | awk '{print \$1}'; } \\
-  | awk '{ s=\$0; o=substr(s,1,12) "3" substr(s,14,3) "8" substr(s,18);
+UUID="\$(printf 'OfflinePlayer:%s' "\$PLAYER" | {
+  if command -v md5 >/dev/null 2>&1; then
+    md5 2>/dev/null | awk '{print \$NF}'
+  elif command -v md5sum >/dev/null 2>&1; then
+    md5sum | awk '{print \$1}'
+  elif command -v openssl >/dev/null 2>&1; then
+    openssl dgst -md5 | awk '{print \$NF}'
+  else
+    printf '%032d' 0
+  fi
+} | awk '{ s=\$0; o=substr(s,1,12) "3" substr(s,14,3) "8" substr(s,18);
           printf "%s-%s-%s-%s-%s", substr(o,1,8), substr(o,9,4), substr(o,13,4), substr(o,17,4), substr(o,21,12) }')"
 
 CP="$_cp"
@@ -2325,7 +2458,7 @@ PROPEOF
 # ============================== 客户端总流程 ==============================
 
 install_client() {
-  local _vdir _libdir _natdir _mitejar _verjson _fmlflat _mcflat _mcjson _idxjson _table _launcher _respack _respack_dest _respack_tmp _urls _s
+  local _vdir _libdir _natdir _mitejar _verjson _fmlflat _mcflat _mcjson _idxjson _table _launcher _respack _respack_dest _respack_tmp _urls _s _candidate
 
   _vdir="$MC_DIR/versions/$MITE_ID"
   _libdir="$MC_DIR/libraries"
@@ -2406,13 +2539,17 @@ install_client() {
 
   # --- 资源包 ---
   log_step "$MSG_STEP_RESPACK"
-  _respack=$(find "$MITE_SRC_DIR" -maxdepth 1 -name 'MITE Resource Pack*.zip' 2>/dev/null | head -1)
+  _respack=""
+  for _candidate in "$MITE_SRC_DIR"/MITE\ Resource\ Pack*.zip; do
+    [ -f "$_candidate" ] && { _respack="$_candidate"; break; }
+  done
   if [ -n "$_respack" ]; then
     _respack_dest="$MC_DIR/resourcepacks/$(basename "$_respack")"
     if [ "$TRANSLATION_ENABLED" = "1" ]; then
       prepare_translation || { log_err "$MSG_TRANSLATION_FAILED"; return 1; }
       log_dim "$MSG_TRANSLATION_MERGE"
-      _respack_tmp="$TMP_ROOT/$(basename "$_respack").merged.zip"
+      # 临时文件放在最终资源包目录, 避免 Linux 上 /tmp 与游戏目录跨文件系统时 mv 失败。
+      _respack_tmp="${_respack_dest}.tmp.$$"
       rm -f "$_respack_tmp"
       if ! merge_translation_resource_pack "$_respack" "$_respack_tmp"; then
         log_err "$MSG_TRANSLATION_FAILED"
@@ -2457,7 +2594,7 @@ TRANSLATION_ENABLED=0
 UI_LANG=""
 
 verify_client() {
-  local _p _bad _n
+  local _p _bad _n _entries
   _bad=""
   for _p in "$CLIENT_MITEJAR" "$CLIENT_VERJSON" "$CLIENT_LAUNCHER" \
             "$MC_DIR/libraries/net/xiaoyu233/fishmodloader/fishmodloader/${FML_LIB_VERSION}/FishModLoader.jar"; do
@@ -2466,12 +2603,14 @@ verify_client() {
 
   # MITE class 必须真的进了 jar
   if [ -s "$CLIENT_MITEJAR" ]; then
-    if ! unzip -l "$CLIENT_MITEJAR" 2>/dev/null | grep -q 'net/minecraft'; then
-      _bad="$_bad\n  MITE jar has no net/minecraft classes"
-    fi
-    if unzip -l "$CLIENT_MITEJAR" 2>/dev/null | grep -q 'META-INF/MOJANG'; then
-      _bad="$_bad\n  MITE jar still contains Mojang signature (META-INF not stripped)"
-    fi
+    _entries=$(list_zip_entries "$CLIENT_MITEJAR" 2>/dev/null) || _entries=""
+    case "$_entries" in
+      *net/minecraft*) : ;;
+      *) _bad="$_bad\n  MITE jar has no net/minecraft classes" ;;
+    esac
+    case "$_entries" in
+      *META-INF/MOJANG*) _bad="$_bad\n  MITE jar still contains Mojang signature (META-INF not stripped)" ;;
+    esac
   fi
 
   # 版本 JSON 的两处修正必须生效
@@ -2538,7 +2677,7 @@ main() {
   local _t0 _t1
   _t0=$(date +%s)
 
-  parse_args "$@"
+  parse_args "$@" || exit 2
   UI_LANG="$(detect_lang)"
   i18n_load "$UI_LANG"
   case "$UI_LANG" in
@@ -2583,25 +2722,27 @@ main() {
     case "$MODE" in
       server|both) SERVER_DIR=$(ask_input "$MSG_ASK_SERVER_DIR" "$SERVER_DIR") ;;
     esac
-    # 交互输入允许写 ~ 或相对路径, 统一归一化为绝对路径 (默认值本身已是绝对路径)
-    case "$MC_DIR" in
-      "~"*) MC_DIR="$HOME${MC_DIR#\~}" ;;
-    esac
-    case "$SERVER_DIR" in
-      "~"*) SERVER_DIR="$HOME${SERVER_DIR#\~}" ;;
-    esac
-    case "$MC_DIR" in
-      /*) : ;;
-      *)  MC_DIR="$(pwd)/$MC_DIR" ;;
-    esac
-    case "$SERVER_DIR" in
-      /*) : ;;
-      *)  SERVER_DIR="$(pwd)/$SERVER_DIR" ;;
-    esac
   fi
 
+  # 无论是否交互, 都把 CLI 或输入的 ~ / 相对路径归一化为绝对路径。
+  # 生成的 launcher 会在启动前 cd 到游戏目录, 内嵌路径必须与其保持一致。
+  case "$MC_DIR" in
+    "~"*) MC_DIR="$HOME${MC_DIR#\~}" ;;
+  esac
+  case "$SERVER_DIR" in
+    "~"*) SERVER_DIR="$HOME${SERVER_DIR#\~}" ;;
+  esac
+  case "$MC_DIR" in
+    /*) : ;;
+    *)  MC_DIR="$(pwd)/$MC_DIR" ;;
+  esac
+  case "$SERVER_DIR" in
+    /*) : ;;
+    *)  SERVER_DIR="$(pwd)/$SERVER_DIR" ;;
+  esac
+
   check_disk "$MC_DIR"
-  select_sources
+  select_sources || exit 2
 
   case "$MODE" in
     client|both)
