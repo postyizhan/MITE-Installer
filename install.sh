@@ -8,7 +8,7 @@
 
 set -u
 
-SCRIPT_VERSION="1.1.0"
+SCRIPT_VERSION="1.2.0"
 
 MC_VERSION="1.6.4"
 MITE_ID="1.6.4-MITE"
@@ -31,6 +31,10 @@ MITE_ZIP_SHA256="fb7ad265d05749e0cd1e54938f6c36ecbe9ea1d4d90d4a04c519615e1e0218c
 MITE_REPO="postyizhan/MITE-Installer"
 MITE_RELEASE_TAG="MITE_1.6.4_R196"
 MITE_RELEASE_FILE="MITE.1.6.4.R196.zip"
+
+# MITE 简体中文翻译仓库 (镜像内容一致, 跟随 master 刷新)
+# 顺序即 --no-speedtest 时的默认优先级。
+TRANSLATION_SOURCES="gitee codeberg ghfast gh-proxy ghproxy hk github"
 
 # FishModLoader 内置回退版本与已知哈希
 FML_REPO="MinecraftIsTooEasy/FishModLoader"
@@ -91,6 +95,7 @@ MSG_USAGE_BODY="  bash install.sh [选项]
   原版: official | bmclapi
   FML : github | ghproxy | gh-proxy | ghfast | hk
   MITE: official | gitee | github | ghproxy | gh-proxy | ghfast | hk
+  汉化: gitee | codeberg | ghfast | gh-proxy | ghproxy | hk | github
   多类可用逗号分隔, 例: --source bmclapi,hk"
 MSG_ERR_PREFIX="错误"
 MSG_WARN_PREFIX="警告"
@@ -122,7 +127,8 @@ MSG_SOURCE_AUTO="自动测速, 选最快 (推荐)"
 MSG_SRC_LABEL_VANILLA="原版资源下载源"
 MSG_SRC_LABEL_FML="FishModLoader 下载源"
 MSG_SRC_LABEL_MITE="MITE 安装包下载源"
-MSG_FINAL_SOURCES="最终下载源: 原版=%s, FishModLoader=%s, MITE=%s"
+MSG_SRC_LABEL_TRANSLATION="简体中文语言包下载源"
+MSG_FINAL_SOURCES="最终下载源: 原版=%s, FishModLoader=%s, MITE=%s, 汉化=%s"
 MSG_SOURCE_FORCED="已指定下载源: %s"
 MSG_ALL_SOURCES_FAIL="所有下载源均不可用, 请检查网络连接"
 MSG_STEP_VANILLA="准备原版 %s 客户端"
@@ -150,6 +156,10 @@ MSG_STEP_JSON="生成版本配置 %s"
 MSG_JSON_FIX_VER="已修正上游版本号错误: fishmodloader %s -> %s"
 MSG_JSON_ADD_ASSETS="已补充缺失的 assets / assetIndex 字段"
 MSG_STEP_RESPACK="安装 MITE 资源包"
+MSG_TRANSLATION_FETCH="下载简体中文语言包"
+MSG_TRANSLATION_MERGE="将简体中文翻译合并进 MITE 资源包"
+MSG_TRANSLATION_MISSING="简体中文语言包缺少必需文件: %s"
+MSG_TRANSLATION_FAILED="简体中文语言包安装失败, 原有 MITE 资源包未改动"
 MSG_STEP_JAVA="准备 Java 运行环境"
 MSG_JAVA_FOUND="已找到 Java %s: %s"
 MSG_JAVA_NOT_FOUND="未找到 Java %s"
@@ -221,6 +231,7 @@ Source names:
   vanilla: official | bmclapi
   FML    : github | ghproxy | gh-proxy | ghfast | hk
   MITE   : official | gitee | github | ghproxy | gh-proxy | ghfast | hk
+  Chinese: gitee | codeberg | ghfast | gh-proxy | ghproxy | hk | github
   Comma-separated, e.g. --source bmclapi,hk"
 MSG_ERR_PREFIX="ERROR"
 MSG_WARN_PREFIX="WARN"
@@ -252,7 +263,8 @@ MSG_SOURCE_AUTO="Auto speed-test, pick fastest (recommended)"
 MSG_SRC_LABEL_VANILLA="Vanilla assets source"
 MSG_SRC_LABEL_FML="FishModLoader source"
 MSG_SRC_LABEL_MITE="MITE bundle source"
-MSG_FINAL_SOURCES="Final sources: vanilla=%s, FishModLoader=%s, MITE=%s"
+MSG_SRC_LABEL_TRANSLATION="Simplified Chinese translation source"
+MSG_FINAL_SOURCES="Final sources: vanilla=%s, FishModLoader=%s, MITE=%s, Chinese=%s"
 MSG_SOURCE_FORCED="Using source: %s"
 MSG_ALL_SOURCES_FAIL="No download source reachable, please check your network"
 MSG_STEP_VANILLA="Preparing vanilla %s client"
@@ -280,6 +292,10 @@ MSG_STEP_JSON="Writing version config %s"
 MSG_JSON_FIX_VER="Fixed upstream version mismatch: fishmodloader %s -> %s"
 MSG_JSON_ADD_ASSETS="Added missing assets / assetIndex fields"
 MSG_STEP_RESPACK="Installing MITE resource pack"
+MSG_TRANSLATION_FETCH="Downloading Simplified Chinese translation"
+MSG_TRANSLATION_MERGE="Merging Simplified Chinese translation into the MITE resource pack"
+MSG_TRANSLATION_MISSING="Translation archive is missing required file: %s"
+MSG_TRANSLATION_FAILED="Translation installation failed; the existing MITE resource pack was left unchanged"
 MSG_STEP_JAVA="Preparing Java runtime"
 MSG_JAVA_FOUND="Found Java %s: %s"
 MSG_JAVA_NOT_FOUND="Java %s not found"
@@ -657,6 +673,9 @@ FML_SOURCES="ghfast gh-proxy ghproxy hk github"
 # 顺序即 --no-speedtest 时的默认优先级: 国内源/代理在前, 官方站放最后。
 MITE_SOURCES="gitee ghfast gh-proxy ghproxy hk github official"
 
+# 简体中文翻译源: 国内镜像优先, GitHub 直连最后。
+# master.zip 不提供固定哈希, 下载后会校验 ZIP 结构中的三个必需文件。
+
 # 原版: meta 基址
 src_meta_base() {
   case "$1" in
@@ -714,6 +733,16 @@ mite_url() {
   esac
 }
 
+# 简体中文翻译仓库: Gitee/Codeberg 直连, 其余为 GitHub 代理镜像。
+translation_url() {
+  case "$1" in
+    gitee)   printf 'https://gitee.com/postyizhan/MITE-CN-Translation/repository/archive/master.zip' ;;
+    codeberg) printf 'https://codeberg.org/postyizhan/MITE-CN-Translation/archive/master.zip' ;;
+    github)  printf 'https://github.com/MinecraftIsTooEasy/MITE-CN-Translation/archive/refs/heads/master.zip' ;;
+    *)        fml_wrap_url "$1" "https://github.com/MinecraftIsTooEasy/MITE-CN-Translation/archive/refs/heads/master.zip" ;;
+  esac
+}
+
 # ============================== 测速 ==============================
 # 对每个源发一个 256 KiB 的 Range 请求, 用实际收到的字节数 / 耗时算速度。
 # 镜像若不支持 Range 会返回整文件, 此时被 --max-time 截断也无妨:
@@ -728,6 +757,7 @@ probe_url() {
     vanilla) printf '%s/v1/objects/%s/client.jar' "$(src_object_base "$2")" "$MC_CLIENT_SHA1" ;;
     fml)     fml_wrap_url "$2" "https://github.com/${FML_REPO}/releases/download/${FML_FALLBACK_VERSION}/FishModLoader-v${FML_FALLBACK_VERSION}.jar" ;;
     mite)    mite_url "$2" ;;
+    translation) translation_url "$2" ;;
   esac
 }
 
@@ -746,6 +776,7 @@ measure_source() {
 SPEED_BEST_VANILLA=""
 SPEED_BEST_FML=""
 SPEED_BEST_MITE=""
+SPEED_BEST_TRANSLATION=""
 
 # speedtest_category <类别> <源列表>  -> 设置 SPEED_BEST_*
 speedtest_category() {
@@ -756,6 +787,7 @@ speedtest_category() {
     vanilla) log_dim "$(printf "$MSG_SPEEDTEST_CATEGORY" "$MSG_SRC_LABEL_VANILLA")" ;;
     fml)     log_dim "$(printf "$MSG_SPEEDTEST_CATEGORY" "$MSG_SRC_LABEL_FML")" ;;
     mite)    log_dim "$(printf "$MSG_SPEEDTEST_CATEGORY" "$MSG_SRC_LABEL_MITE")" ;;
+    translation) log_dim "$(printf "$MSG_SPEEDTEST_CATEGORY" "$MSG_SRC_LABEL_TRANSLATION")" ;;
   esac
   for _s in $_list; do
     _u=$(probe_url "$_cat" "$_s")
@@ -771,6 +803,7 @@ speedtest_category() {
     vanilla) SPEED_BEST_VANILLA="$_best" ;;
     fml)     SPEED_BEST_FML="$_best" ;;
     mite)    SPEED_BEST_MITE="$_best" ;;
+    translation) SPEED_BEST_TRANSLATION="$_best" ;;
   esac
 }
 
@@ -778,6 +811,7 @@ speedtest_category() {
 VANILLA_ORDER=""
 FML_ORDER=""
 MITE_ORDER=""
+TRANSLATION_ORDER=""
 
 # 把 <首选> 提到列表最前
 promote_first() {
@@ -800,20 +834,32 @@ source_from_opt() {
 }
 
 select_sources() {
-  local _v_pick _f_pick _m_pick
-  _v_forced=""; _f_forced=""; _m_forced=""
-  _v_pick=""; _f_pick=""; _m_pick=""
+  local _v_pick _f_pick _m_pick _t_pick _force_ready _all_failed
+  _v_forced=""; _f_forced=""; _m_forced=""; _t_forced=""
+  _v_pick=""; _f_pick=""; _m_pick=""; _t_pick=""
   if [ -n "$OPT_SOURCE" ]; then
     _v_forced=$(source_from_opt "$VANILLA_SOURCES") || _v_forced=""
     _f_forced=$(source_from_opt "$FML_SOURCES") || _f_forced=""
     _m_forced=$(source_from_opt "$MITE_SOURCES") || _m_forced=""
+    _t_forced=$(source_from_opt "$TRANSLATION_SOURCES") || _t_forced=""
   fi
 
-  if [ -n "$_v_forced" ] && [ -n "$_f_forced" ] && [ -n "$_m_forced" ]; then
-    log_info "$(printf "$MSG_SOURCE_FORCED" "$_v_forced, $_f_forced, $_m_forced")"
+  _force_ready=0
+  case "$MODE" in
+    server) [ -n "$_f_forced" ] && _force_ready=1 ;;
+    client|both)
+      if [ -n "$_v_forced" ] && [ -n "$_f_forced" ] && [ -n "$_m_forced" ] && \
+         { [ "$TRANSLATION_ENABLED" != "1" ] || [ -n "$_t_forced" ]; }; then
+        _force_ready=1
+      fi
+      ;;
+  esac
+  if [ "$_force_ready" = "1" ]; then
+    log_info "$(printf "$MSG_SOURCE_FORCED" "$_v_forced, $_f_forced, $_m_forced, $_t_forced")"
     VANILLA_ORDER=$(promote_first "$_v_forced" "$VANILLA_SOURCES")
     FML_ORDER=$(promote_first "$_f_forced" "$FML_SOURCES")
     MITE_ORDER=$(promote_first "$_m_forced" "$MITE_SOURCES")
+    TRANSLATION_ORDER=$(promote_first "$_t_forced" "$TRANSLATION_SOURCES")
     log_info "$(final_sources_summary)"
     return
   fi
@@ -826,70 +872,92 @@ select_sources() {
       client|both)
         [ -z "$_v_forced" ] && _v_pick=$(ask_source_category vanilla "$MSG_SRC_LABEL_VANILLA" "$VANILLA_SOURCES")
         [ -z "$_m_forced" ] && _m_pick=$(ask_source_category mite "$MSG_SRC_LABEL_MITE" "$MITE_SOURCES")
+        [ "$TRANSLATION_ENABLED" = "1" ] && [ -z "$_t_forced" ] && _t_pick=$(ask_source_category translation "$MSG_SRC_LABEL_TRANSLATION" "$TRANSLATION_SOURCES")
         ;;
     esac
     [ -z "$_f_forced" ] && _f_pick=$(ask_source_category fml "$MSG_SRC_LABEL_FML" "$FML_SOURCES")
   fi
 
   # --- 测速 / 默认顺序 ---
-  SPEED_BEST_VANILLA=""; SPEED_BEST_FML=""; SPEED_BEST_MITE=""
+  SPEED_BEST_VANILLA=""; SPEED_BEST_FML=""; SPEED_BEST_MITE=""; SPEED_BEST_TRANSLATION=""
   if [ "$OPT_NO_SPEEDTEST" = "1" ]; then
     log_info "$MSG_SPEEDTEST_SKIP"
     VANILLA_ORDER="$VANILLA_SOURCES"
     FML_ORDER="$FML_SOURCES"
     MITE_ORDER="$MITE_SOURCES"
+    TRANSLATION_ORDER="$TRANSLATION_SOURCES"
   else
     # 需要测速的类别: 交互下是选了"自动测速"的; 非交互下是模式用得到的全部。
     # 交互下手动指定了具体源的类别不测速。
-    _do_v=0; _do_f=0; _do_m=0
+    _do_v=0; _do_f=0; _do_m=0; _do_t=0
     if [ "$TTY_OK" = "1" ] && [ "$OPT_YES" != "1" ]; then
       case "$MODE" in
-        client|both) [ "$_v_pick" = "auto" ] && _do_v=1; [ "$_m_pick" = "auto" ] && _do_m=1 ;;
+        client|both)
+          [ "$_v_pick" = "auto" ] && _do_v=1
+          [ "$_m_pick" = "auto" ] && _do_m=1
+          [ "$TRANSLATION_ENABLED" = "1" ] && [ "$_t_pick" = "auto" ] && _do_t=1
+          ;;
       esac
       [ "$_f_pick" = "auto" ] && _do_f=1
     else
       case "$MODE" in
         server) _do_f=1 ;;
-        *)      _do_v=1; _do_f=1; _do_m=1 ;;
+        *)      _do_v=1; _do_f=1; _do_m=1; [ "$TRANSLATION_ENABLED" = "1" ] && _do_t=1 ;;
       esac
     fi
 
-    if [ "$_do_v" = "1" ] || [ "$_do_f" = "1" ] || [ "$_do_m" = "1" ]; then
+    if [ "$_do_v" = "1" ] || [ "$_do_f" = "1" ] || [ "$_do_m" = "1" ] || [ "$_do_t" = "1" ]; then
       log_info "$MSG_SPEEDTEST_HEAD"
       [ "$_do_v" = "1" ] && speedtest_category vanilla "$VANILLA_SOURCES"
       [ "$_do_f" = "1" ] && speedtest_category fml "$FML_SOURCES"
       [ "$_do_m" = "1" ] && speedtest_category mite "$MITE_SOURCES"
+      [ "$_do_t" = "1" ] && speedtest_category translation "$TRANSLATION_SOURCES"
       # 非交互全自动: 全部不可用才报错 (保持旧行为)。交互下单项失败就回退默认顺序。
       if [ "$TTY_OK" != "1" ] || [ "$OPT_YES" = "1" ]; then
-        if [ -z "$SPEED_BEST_VANILLA" ] && [ -z "$SPEED_BEST_FML" ] && [ -z "$SPEED_BEST_MITE" ]; then
-          die "$MSG_ALL_SOURCES_FAIL"
-        fi
+        _all_failed=0
+        case "$MODE" in
+          server) [ -z "$SPEED_BEST_FML" ] && _all_failed=1 ;;
+          client|both)
+            if [ -z "$SPEED_BEST_VANILLA" ] && [ -z "$SPEED_BEST_FML" ] && [ -z "$SPEED_BEST_MITE" ] && \
+               { [ "$TRANSLATION_ENABLED" != "1" ] || [ -z "$SPEED_BEST_TRANSLATION" ]; }; then
+              _all_failed=1
+            fi
+            ;;
+        esac
+        [ "$_all_failed" = "1" ] && die "$MSG_ALL_SOURCES_FAIL"
       fi
     fi
 
-    VANILLA_ORDER="$VANILLA_SOURCES"; FML_ORDER="$FML_SOURCES"; MITE_ORDER="$MITE_SOURCES"
+    VANILLA_ORDER="$VANILLA_SOURCES"; FML_ORDER="$FML_SOURCES"; MITE_ORDER="$MITE_SOURCES"; TRANSLATION_ORDER="$TRANSLATION_SOURCES"
     [ -n "$SPEED_BEST_VANILLA" ] && VANILLA_ORDER=$(promote_first "$SPEED_BEST_VANILLA" "$VANILLA_SOURCES")
     [ -n "$SPEED_BEST_FML" ] && FML_ORDER=$(promote_first "$SPEED_BEST_FML" "$FML_SOURCES")
     [ -n "$SPEED_BEST_MITE" ] && MITE_ORDER=$(promote_first "$SPEED_BEST_MITE" "$MITE_SOURCES")
+    [ -n "$SPEED_BEST_TRANSLATION" ] && TRANSLATION_ORDER=$(promote_first "$SPEED_BEST_TRANSLATION" "$TRANSLATION_SOURCES")
   fi
 
   # --- 手动指定 (交互选中或 --source 指定) 提到最前 ---
   [ -n "$_v_pick" ] && [ "$_v_pick" != "auto" ] && VANILLA_ORDER=$(promote_first "$_v_pick" "$VANILLA_SOURCES")
   [ -n "$_f_pick" ] && [ "$_f_pick" != "auto" ] && FML_ORDER=$(promote_first "$_f_pick" "$FML_SOURCES")
   [ -n "$_m_pick" ] && [ "$_m_pick" != "auto" ] && MITE_ORDER=$(promote_first "$_m_pick" "$MITE_SOURCES")
+  [ -n "$_t_pick" ] && [ "$_t_pick" != "auto" ] && TRANSLATION_ORDER=$(promote_first "$_t_pick" "$TRANSLATION_SOURCES")
   [ -n "$_v_forced" ] && VANILLA_ORDER=$(promote_first "$_v_forced" "$VANILLA_SOURCES")
   [ -n "$_f_forced" ] && FML_ORDER=$(promote_first "$_f_forced" "$FML_SOURCES")
   [ -n "$_m_forced" ] && MITE_ORDER=$(promote_first "$_m_forced" "$MITE_SOURCES")
+  [ -n "$_t_forced" ] && TRANSLATION_ORDER=$(promote_first "$_t_forced" "$TRANSLATION_SOURCES")
 
   log_info "$(final_sources_summary)"
 }
 
-# 回显最终生效的源 (首选 / 首选 / 首选)
+# 回显最终生效的源 (首选 / 首选 / 首选 / 首选)
 final_sources_summary() {
+  local _t_summary
+  _t_summary="$(printf '%s' "$TRANSLATION_ORDER" | awk '{print $1}')"
+  [ "$TRANSLATION_ENABLED" = "1" ] && [ "$MODE" != "server" ] || _t_summary="disabled"
   printf "$MSG_FINAL_SOURCES" \
     "$(printf '%s' "$VANILLA_ORDER" | awk '{print $1}')" \
     "$(printf '%s' "$FML_ORDER" | awk '{print $1}')" \
-    "$(printf '%s' "$MITE_ORDER" | awk '{print $1}')"
+    "$(printf '%s' "$MITE_ORDER" | awk '{print $1}')" \
+    "$_t_summary"
 }
 
 # ============================== 下载 ==============================
@@ -1358,6 +1426,83 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
     jar) (cd "$_src" && jar cf "$_out" .) ;;
     *) return 1 ;;
   esac
+}
+
+# ============================== 简体中文翻译包 ==============================
+
+TRANSLATION_ZIP=""
+TRANSLATION_STAGE_DIR=""
+TRANSLATION_LANG_FILE=""
+TRANSLATION_META_FILE=""
+TRANSLATION_ICON_FILE=""
+
+# translation_extract <zip> <目标目录>
+# 解压并定位仓库构建所需的三个文件。仓库根目录名随 ZIP 下载方式变化,
+# 所以只按稳定的相对路径查找。
+translation_extract() {
+  local _zip _stage _missing
+  _zip="$1"; _stage="$2"
+  rm -rf "$_stage"; mkdir -p "$_stage"
+  unpack_zip "$_zip" "$_stage" || return 1
+
+  TRANSLATION_LANG_FILE=$(find "$_stage" -type f -path '*/zh_cn/MITE.lang' 2>/dev/null | head -1)
+  TRANSLATION_META_FILE=$(find "$_stage" -type f -path '*/build_assets/pack.mcmeta' 2>/dev/null | head -1)
+  TRANSLATION_ICON_FILE=$(find "$_stage" -type f -path '*/build_assets/pack.png' 2>/dev/null | head -1)
+
+  _missing=""
+  [ -s "$TRANSLATION_LANG_FILE" ] || _missing="$_missing zh_cn/MITE.lang"
+  [ -s "$TRANSLATION_META_FILE" ] || _missing="$_missing build_assets/pack.mcmeta"
+  [ -s "$TRANSLATION_ICON_FILE" ] || _missing="$_missing build_assets/pack.png"
+  if [ -n "$_missing" ]; then
+    log_warn "$(printf "$MSG_TRANSLATION_MISSING" "${_missing# }")"
+    return 1
+  fi
+
+  TRANSLATION_STAGE_DIR="$_stage"
+  return 0
+}
+
+# 下载 master.zip。每个候选源都先解压验证, 避免 HTTP 200 的错误页面
+# 被当成有效 ZIP 后阻断后续镜像回退。
+prepare_translation() {
+  local _s _url _candidate _stage _last
+  log_dim "$MSG_TRANSLATION_FETCH"
+  TRANSLATION_ZIP=""; TRANSLATION_STAGE_DIR=""
+  _last=""
+  for _s in $TRANSLATION_ORDER; do
+    _url=$(translation_url "$_s")
+    _candidate="$TMP_ROOT/MITE-CN-Translation.${_s}.zip"
+    _stage="$TMP_ROOT/translation.${_s}"
+    rm -f "$_candidate"
+    if fetch_one "$_url" "$_candidate" "" "" "" && translation_extract "$_candidate" "$_stage"; then
+      TRANSLATION_ZIP="$_candidate"
+      return 0
+    fi
+    rm -f "$_candidate"
+    rm -rf "$_stage"
+    _last="$_url"
+    [ -n "$TRANSLATION_ORDER" ] && log_dim "$(printf "$MSG_DL_RETRY" "$_url")"
+  done
+  log_err "$(printf "$MSG_DL_FAIL_ALL" "MITE-CN-Translation.zip <- $_last")"
+  return 1
+}
+
+# merge_translation_resource_pack <原始资源包> <临时输出 ZIP>
+merge_translation_resource_pack() {
+  local _base _out _stage
+  _base="$1"; _out="$2"
+  _stage="$TMP_ROOT/respack-merge"
+  rm -rf "$_stage"; mkdir -p "$_stage"
+  unpack_zip "$_base" "$_stage" || return 1
+
+  mkdir -p "$_stage/assets/minecraft/lang"
+  cp -f "$TRANSLATION_LANG_FILE" "$_stage/assets/minecraft/lang/MITE.lang" || return 1
+  cp -f "$TRANSLATION_META_FILE" "$_stage/pack.mcmeta" || return 1
+  cp -f "$TRANSLATION_ICON_FILE" "$_stage/pack.png" || return 1
+
+  pack_zip "$_out" "$_stage" || return 1
+  [ -s "$_out" ] || return 1
+  return 0
 }
 
 # ============================== assets (legacy) ==============================
@@ -2140,7 +2285,7 @@ PROPEOF
 # ============================== 客户端总流程 ==============================
 
 install_client() {
-  local _vdir _libdir _natdir _mitejar _verjson _fmlflat _mcflat _mcjson _idxjson _table _launcher _respack _urls _s
+  local _vdir _libdir _natdir _mitejar _verjson _fmlflat _mcflat _mcjson _idxjson _table _launcher _respack _respack_dest _respack_tmp _urls _s
 
   _vdir="$MC_DIR/versions/$MITE_ID"
   _libdir="$MC_DIR/libraries"
@@ -2223,9 +2368,27 @@ install_client() {
   log_step "$MSG_STEP_RESPACK"
   _respack=$(find "$MITE_SRC_DIR" -maxdepth 1 -name 'MITE Resource Pack*.zip' 2>/dev/null | head -1)
   if [ -n "$_respack" ]; then
-    cp -f "$_respack" "$MC_DIR/resourcepacks/" || return 1
-    log_dim "  $(basename "$_respack")"
+    _respack_dest="$MC_DIR/resourcepacks/$(basename "$_respack")"
+    if [ "$TRANSLATION_ENABLED" = "1" ]; then
+      prepare_translation || { log_err "$MSG_TRANSLATION_FAILED"; return 1; }
+      log_dim "$MSG_TRANSLATION_MERGE"
+      _respack_tmp="$TMP_ROOT/$(basename "$_respack").merged.zip"
+      rm -f "$_respack_tmp"
+      if ! merge_translation_resource_pack "$_respack" "$_respack_tmp"; then
+        log_err "$MSG_TRANSLATION_FAILED"
+        return 1
+      fi
+      mv -f "$_respack_tmp" "$_respack_dest" || return 1
+      log_dim "  $(basename "$_respack_dest") (含简体中文翻译)"
+    else
+      cp -f "$_respack" "$_respack_dest" || return 1
+      log_dim "  $(basename "$_respack_dest")"
+    fi
   else
+    if [ "$TRANSLATION_ENABLED" = "1" ]; then
+      log_err "$MSG_TRANSLATION_FAILED"
+      return 1
+    fi
     log_warn "MITE Resource Pack not found in archive"
   fi
 
@@ -2250,6 +2413,8 @@ install_client() {
 CLIENT_LAUNCHER=""
 CLIENT_VERJSON=""
 CLIENT_MITEJAR=""
+TRANSLATION_ENABLED=0
+UI_LANG=""
 
 verify_client() {
   local _p _bad _n
@@ -2325,7 +2490,12 @@ main() {
   _t0=$(date +%s)
 
   parse_args "$@"
-  i18n_load "$(detect_lang)"
+  UI_LANG="$(detect_lang)"
+  i18n_load "$UI_LANG"
+  case "$UI_LANG" in
+    zh*) TRANSLATION_ENABLED=1 ;;
+    *)   TRANSLATION_ENABLED=0 ;;
+  esac
 
   if [ "$OPT_VERSION" = "1" ]; then printf '%s\n' "$SCRIPT_VERSION"; exit 0; fi
   if [ "$OPT_HELP" = "1" ]; then
@@ -2342,6 +2512,8 @@ main() {
 
   # 先定模式再算步数, 否则 preflight 会打印 [1/0]
   choose_mode
+  # 服务端没有资源包, 即使界面语言为中文也不下载客户端翻译。
+  [ "$MODE" = "server" ] && TRANSLATION_ENABLED=0
   # preflight(1) + install_client(12) + verify(1) + server(1)
   case "$MODE" in
     client) STEP_TOTAL=14 ;;

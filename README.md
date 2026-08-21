@@ -22,6 +22,7 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/postyizhan/MITE-
 - 下载 MITE R196，按官方手动安装步骤重打包出 `1.6.4-MITE.jar`（去签名 + 覆盖 class）
 - 注入 FishModLoader 与其依赖，生成可被第三方启动器识别的版本 JSON
 - 补齐 1120 项 legacy 布局资源（约 146 MB）、依赖库、平台 natives
+- 中文界面安装时下载社区简体中文翻译，并直接合并进 `MITE Resource Pack 1.6.4.zip`
 - 需要时自动下载便携 JRE 17 到安装目录内，**不动系统 Java**
 - 生成 `launch-mite.sh`，离线可直接启动，不依赖任何启动器
 - 服务端：下载开箱即用的 HDS 整合包并生成 `start.sh`
@@ -60,7 +61,7 @@ bash install.sh --client --dir ~/mc-mite
 
 ### 下载源
 
-三类产物各自独立选源。交互模式下会逐个询问（每类选项 1 都是“自动测速，选最快”，也可直接指定某个源）；非交互模式默认测速后自动挑最快的，可用 `--source` 指定或用 `--no-speedtest` 跳过。
+四类产物各自独立选源。交互模式下会逐个询问（每类选项 1 都是“自动测速，选最快”，也可直接指定某个源）；非交互模式默认测速后自动挑最快的，可用 `--source` 指定或用 `--no-speedtest` 跳过。
 
 **原版**（meta / jar / libraries / assets）
 - `official` — Mojang 官方
@@ -78,6 +79,14 @@ bash install.sh --client --dir ~/mc-mite
 
 也可用 `--mite-zip` 直接指定本地文件跳过下载。
 
+**简体中文语言包**（仅 `--lang zh_CN` 或检测到中文界面时下载）
+- `gitee` — Gitee 仓库归档
+- `codeberg` — Codeberg 仓库归档
+- `ghfast` · `gh-proxy` · `ghproxy` · `hk` — GitHub 代理镜像
+- `github` — GitHub 直连
+
+翻译包每次中文客户端安装都会刷新。脚本将 `zh_cn/MITE.lang` 写入 MITE 资源包的 `assets/minecraft/lang/MITE.lang`，并用 `build_assets/pack.mcmeta`、`build_assets/pack.png` 更新资源包根目录；不会生成额外资源包，也不会改写 `options.txt`。
+
 ## 产物
 
 ```
@@ -89,7 +98,7 @@ bash install.sh --client --dir ~/mc-mite
 │   └── 1.6.4-MITE-natives/         按平台解压的 natives
 ├── libraries/                      含 FishModLoader 与 guava-28.0
 ├── assets/virtual/legacy/           1120 项，约 146 MB
-├── resourcepacks/MITE Resource Pack 1.6.4.zip
+├── resourcepacks/MITE Resource Pack 1.6.4.zip  中文安装时已内含简体中文翻译
 ├── runtime/jre-17-x64/             仅在系统缺 Java 17 时下载
 └── launch-mite.sh                  离线可直接启动
 ```
