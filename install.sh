@@ -67,6 +67,26 @@ ASSETS_CHUNK="64"
 i18n_zh_CN() {
 MSG_LANG_NAME="简体中文"
 MSG_BANNER="MITE 1.6.4 + FishModLoader 安装器"
+MSG_BADGE_REPO="仓库"
+MSG_BADGE_COMMUNITY="社区入口"
+MSG_BADGE_FREE="完全免费"
+MSG_BADGE_TELEGRAM="TG"
+MSG_BADGE_QQ="QQ群"
+MSG_BADGE_CHANNEL="QQ频道"
+MSG_BADGE_DISCORD="Discord"
+MSG_LOGO=" __  __ ___ _____ _____
+|  \/  |_ _|_   _| ____|
+| |\/| || |  | | |  _|
+| |  | || |  | | | |___
+|_|  |_|___| |_| |_____|
+"
+MSG_REPO_URL="脚本仓库: https://github.com/postyizhan/MITE-Installer"
+MSG_COMMUNITY_TELEGRAM="Telegram: https://t.me/moddedmite"
+MSG_COMMUNITY_QQ1="1 群 (最大的 MITE Mod 群聊): 795728891"
+MSG_COMMUNITY_QQ2="2 群: 1009606363"
+MSG_COMMUNITY_QQ_CHANNEL="https://pd.qq.com/s/gti0oomau (频道号: ModdedMITE327)"
+MSG_COMMUNITY_DISCORD=": https://discord.gg/2tSuFhZxS8"
+MSG_FREE_NOTICE="MITE 本体、Mod、整合包与本脚本均完全免费, 如有发现倒卖请联系我们。"
 MSG_USAGE_HEAD="用法"
 MSG_USAGE_BODY="  bash install.sh [选项]
   curl -fsSL <脚本地址> | bash
@@ -203,6 +223,26 @@ MSG_ELAPSED="耗时 %s 秒"
 i18n_en_US() {
 MSG_LANG_NAME="English"
 MSG_BANNER="MITE 1.6.4 + FishModLoader Installer"
+MSG_BADGE_REPO="REPO"
+MSG_BADGE_COMMUNITY="COMMUNITY"
+MSG_BADGE_FREE="FREE"
+MSG_BADGE_TELEGRAM="TG"
+MSG_BADGE_QQ="QQ"
+MSG_BADGE_CHANNEL="QQ CHANNEL"
+MSG_BADGE_DISCORD="DISCORD"
+MSG_LOGO=" __  __ ___ _____ _____
+|  \/  |_ _|_   _| ____|
+| |\/| || |  | | |  _|
+| |  | || |  | | | |___
+|_|  |_|___| |_| |_____|
+"
+MSG_REPO_URL="Script repository: https://github.com/postyizhan/MITE-Installer"
+MSG_COMMUNITY_TELEGRAM="Telegram: https://t.me/moddedmite"
+MSG_COMMUNITY_QQ1="group 1 (largest MITE Mod group): 795728891"
+MSG_COMMUNITY_QQ2="group 2: 1009606363"
+MSG_COMMUNITY_QQ_CHANNEL="https://pd.qq.com/s/gti0oomau (channel: ModdedMITE327)"
+MSG_COMMUNITY_DISCORD="https://discord.gg/2tSuFhZxS8"
+MSG_FREE_NOTICE="MITE, Mods, modpacks, and this installer are completely free. Contact us about reselling."
 MSG_USAGE_HEAD="Usage"
 MSG_USAGE_BODY="  bash install.sh [options]
   curl -fsSL <script-url> | bash
@@ -358,9 +398,9 @@ detect_lang() {
 if [ -t 1 ] && [ -z "${NO_COLOR:-}" ]; then
   C_RESET=$(printf '\033[0m'); C_BOLD=$(printf '\033[1m'); C_DIM=$(printf '\033[2m')
   C_RED=$(printf '\033[31m'); C_GREEN=$(printf '\033[32m')
-  C_YELLOW=$(printf '\033[33m'); C_BLUE=$(printf '\033[36m')
+  C_YELLOW=$(printf '\033[33m'); C_BLUE=$(printf '\033[36m'); C_MAGENTA=$(printf '\033[35m')
 else
-  C_RESET=""; C_BOLD=""; C_DIM=""; C_RED=""; C_GREEN=""; C_YELLOW=""; C_BLUE=""
+  C_RESET=""; C_BOLD=""; C_DIM=""; C_RED=""; C_GREEN=""; C_YELLOW=""; C_BLUE=""; C_MAGENTA=""
 fi
 
 STEP_NO=0
@@ -2469,8 +2509,17 @@ default_mc_dir() {
 }
 
 print_banner() {
-  printf '\n%s\n' "${C_BOLD}${MSG_BANNER}${C_RESET}  ${C_DIM}v${SCRIPT_VERSION}${C_RESET}"
+  printf '\n%s\n' "${C_BOLD}${C_BLUE}${MSG_LOGO}${C_RESET}"
+  printf '%s\n' "${C_BOLD}${C_GREEN}${MSG_BANNER}${C_RESET}  ${C_DIM}v${SCRIPT_VERSION}${C_RESET}"
   printf '%s\n' "${C_DIM}────────────────────────────────────────────────${C_RESET}"
+  printf '%s  %s\n' "${C_BOLD}${C_YELLOW}[${MSG_BADGE_REPO}]${C_RESET}" "$MSG_REPO_URL"
+  printf '%s\n' "${C_BOLD}${C_MAGENTA}[${MSG_BADGE_COMMUNITY}]${C_RESET}"
+  printf '  %s %s\n' "${C_BLUE}[${MSG_BADGE_TELEGRAM}]${C_RESET}" "$MSG_COMMUNITY_TELEGRAM"
+  printf '  %s %s\n' "${C_BLUE}[${MSG_BADGE_QQ}]${C_RESET}" "$MSG_COMMUNITY_QQ1"
+  printf '  %s %s\n' "${C_BLUE}[${MSG_BADGE_QQ}]${C_RESET}" "$MSG_COMMUNITY_QQ2"
+  printf '  %s %s\n' "${C_BLUE}[${MSG_BADGE_CHANNEL}]${C_RESET}" "$MSG_COMMUNITY_QQ_CHANNEL"
+  printf '  %s %s\n' "${C_BLUE}[${MSG_BADGE_DISCORD}]${C_RESET}" "$MSG_COMMUNITY_DISCORD"
+  printf '\n%s %s\n\n' "${C_BOLD}${C_GREEN}[${MSG_BADGE_FREE}]${C_RESET}" "$MSG_FREE_NOTICE"
 }
 
 choose_mode() {

@@ -27,6 +27,17 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/postyizhan/MITE-
 - 生成 `launch-mite.sh`，离线可直接启动，不依赖任何启动器
 - 服务端：下载开箱即用的 HDS 整合包并生成 `start.sh`
 
+## 社区与声明
+
+- 脚本仓库：<https://github.com/postyizhan/MITE-Installer>
+- Modded MITE Telegram：<https://t.me/moddedmite>
+- MITE 资源&闲聊 1 群（最大的 MITE Mod 群聊）：`795728891`
+- MITE 资源&闲聊 2 群：`1009606363`
+- MITE 社区 QQ 频道：<https://pd.qq.com/s/gti0oomau>（频道号：`ModdedMITE327`）
+- MITE 社区 Discord：<https://discord.gg/2tSuFhZxS8>
+
+MITE 本体、Mod、整合包与本脚本均完全免费。如发现倒卖，请联系我们。
+
 ## 用法
 
 ```bash
