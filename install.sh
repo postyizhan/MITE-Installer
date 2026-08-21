@@ -122,7 +122,7 @@ MSG_SOURCE_AUTO="自动测速, 选最快 (推荐)"
 MSG_SRC_LABEL_VANILLA="原版资源下载源"
 MSG_SRC_LABEL_FML="FishModLoader 下载源"
 MSG_SRC_LABEL_MITE="MITE 安装包下载源"
-MSG_FINAL_SOURCES="最终下载源: %s"
+MSG_FINAL_SOURCES="最终下载源: 原版=%s, FishModLoader=%s, MITE=%s"
 MSG_SOURCE_FORCED="已指定下载源: %s"
 MSG_ALL_SOURCES_FAIL="所有下载源均不可用, 请检查网络连接"
 MSG_STEP_VANILLA="准备原版 %s 客户端"
@@ -143,9 +143,9 @@ MSG_STEP_REPACK="重打包 MITE 客户端 jar"
 MSG_REPACK_STRIP="移除 META-INF (去签名)"
 MSG_REPACK_MERGE="合并 MITE class 文件"
 MSG_REPACK_ZIP="打包为 %s"
-MSG_STEP_FML="注入 FishModLoader %s"
+MSG_STEP_FML="注入 FishModLoader"
 MSG_FML_LATEST="从 %s 获取最新版本: %s"
-MSG_FML_API_FAIL="GitHub API 不可达, 回退到内置版本 %s"
+MSG_FML_API_FAIL="FishModLoader 源不可达, 回退到内置版本 %s"
 MSG_STEP_JSON="生成版本配置 %s"
 MSG_JSON_FIX_VER="已修正上游版本号错误: fishmodloader %s -> %s"
 MSG_JSON_ADD_ASSETS="已补充缺失的 assets / assetIndex 字段"
@@ -252,7 +252,7 @@ MSG_SOURCE_AUTO="Auto speed-test, pick fastest (recommended)"
 MSG_SRC_LABEL_VANILLA="Vanilla assets source"
 MSG_SRC_LABEL_FML="FishModLoader source"
 MSG_SRC_LABEL_MITE="MITE bundle source"
-MSG_FINAL_SOURCES="Final sources: %s"
+MSG_FINAL_SOURCES="Final sources: vanilla=%s, FishModLoader=%s, MITE=%s"
 MSG_SOURCE_FORCED="Using source: %s"
 MSG_ALL_SOURCES_FAIL="No download source reachable, please check your network"
 MSG_STEP_VANILLA="Preparing vanilla %s client"
@@ -273,9 +273,9 @@ MSG_STEP_REPACK="Repacking MITE client jar"
 MSG_REPACK_STRIP="Removing META-INF (unsigning)"
 MSG_REPACK_MERGE="Merging MITE class files"
 MSG_REPACK_ZIP="Packing into %s"
-MSG_STEP_FML="Injecting FishModLoader %s"
+MSG_STEP_FML="Injecting FishModLoader"
 MSG_FML_LATEST="Latest version from %s: %s"
-MSG_FML_API_FAIL="GitHub API unreachable, falling back to bundled version %s"
+MSG_FML_API_FAIL="FishModLoader sources unreachable, falling back to bundled version %s"
 MSG_STEP_JSON="Writing version config %s"
 MSG_JSON_FIX_VER="Fixed upstream version mismatch: fishmodloader %s -> %s"
 MSG_JSON_ADD_ASSETS="Added missing assets / assetIndex fields"
@@ -886,7 +886,10 @@ select_sources() {
 
 # 回显最终生效的源 (首选 / 首选 / 首选)
 final_sources_summary() {
-  printf "$MSG_FINAL_SOURCES" "$(printf '%s' "$VANILLA_ORDER" | awk '{print $1}') / $(printf '%s' "$FML_ORDER" | awk '{print $1}') / $(printf '%s' "$MITE_ORDER" | awk '{print $1}')"
+  printf "$MSG_FINAL_SOURCES" \
+    "$(printf '%s' "$VANILLA_ORDER" | awk '{print $1}')" \
+    "$(printf '%s' "$FML_ORDER" | awk '{print $1}')" \
+    "$(printf '%s' "$MITE_ORDER" | awk '{print $1}')"
 }
 
 # ============================== 下载 ==============================
@@ -2177,7 +2180,7 @@ install_client() {
   fetch_multi "$_idxjson" "$MC_ASSET_INDEX_SHA1" "" "$MC_ASSET_INDEX_SIZE" $_urls || return 1
 
   # --- FML installer (版本 JSON 模板在里面) ---
-  log_step "$(printf "$MSG_STEP_FML" "${OPT_FML_VERSION:-latest}")"
+  log_step "$MSG_STEP_FML"
   prepare_fml || return 1
   install_fml_payload "$_libdir" || return 1
 
