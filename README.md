@@ -29,10 +29,12 @@ curl -fsSL https://ghfast.top/https://raw.githubusercontent.com/postyizhan/MITE-
 ## 用法
 
 ```bash
-# 交互式(会问装客户端还是服务端)
+# 交互式
 curl -fsSL <脚本地址> | bash
+```
 
-# 传参数要用 bash -s --
+```bash
+# 传参数要用 bash -s --（跳过全部询问，全自动）
 curl -fsSL <脚本地址> | bash -s -- --client --yes
 
 # 本地运行
@@ -58,7 +60,7 @@ bash install.sh --client --dir ~/mc-mite
 
 ### 下载源
 
-三类产物各自独立选源，默认测速后自动挑最快的。
+三类产物各自独立选源。交互模式下会逐个询问（每类选项 1 都是“自动测速，选最快”，也可直接指定某个源）；非交互模式默认测速后自动挑最快的，可用 `--source` 指定或用 `--no-speedtest` 跳过。
 
 **原版**（meta / jar / libraries / assets）
 - `official` — Mojang 官方

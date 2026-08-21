@@ -8,7 +8,7 @@
 
 set -u
 
-SCRIPT_VERSION="1.0.0"
+SCRIPT_VERSION="1.1.0"
 
 MC_VERSION="1.6.4"
 MITE_ID="1.6.4-MITE"
@@ -54,6 +54,8 @@ org/ow2/asm/asm-util/9.3/asm-util-9.3.jar=9595bc05510d0bd4b610188b77333fe4851a19
 REQUIRED_JAVA_MAJOR="17"
 MIN_DISK_MB="1536"
 PARALLEL_MAX="16"
+# 资源分批下载的每批数量: 批内用 curl -Z 并发, 每批结束即时回显进度
+ASSETS_CHUNK="64"
 
 # ============================== 多语言 ==============================
 # 加语言只需新增一个 i18n_<locale> 函数并在 i18n_load 里挂上。
@@ -83,6 +85,8 @@ MSG_USAGE_BODY="  bash install.sh [选项]
   --version              显示脚本版本
   --help                 显示本帮助
 
+交互运行会依次询问: 安装内容 / 安装路径(留空用默认) / 下载源(含测速选项)。
+
 下载源名称:
   原版: official | bmclapi
   FML : github | ghproxy | gh-proxy | ghfast | hk
@@ -106,11 +110,19 @@ MSG_MODE_BOTH="客户端 + 服务端"
 MSG_PROMPT_CHOICE="输入编号"
 MSG_INVALID_CHOICE="无效选择, 请重新输入"
 MSG_DEFAULT_TAG="(默认)"
+MSG_ASK_MC_DIR="游戏安装目录 (不填则用默认)"
+MSG_ASK_SERVER_DIR="服务端安装目录 (不填则用默认)"
 MSG_SPEEDTEST_HEAD="正在测速下载源"
+MSG_SPEEDTEST_CATEGORY="测速类别: %s"
 MSG_SPEEDTEST_SKIP="已跳过测速"
 MSG_SPEEDTEST_ITEM="  %-22s %s"
 MSG_SPEEDTEST_FAIL="不可用"
-MSG_SPEEDTEST_PICK="已选用最快源: %s"
+MSG_SOURCE_ASK="请选择下载源"
+MSG_SOURCE_AUTO="自动测速, 选最快 (推荐)"
+MSG_SRC_LABEL_VANILLA="原版资源下载源"
+MSG_SRC_LABEL_FML="FishModLoader 下载源"
+MSG_SRC_LABEL_MITE="MITE 安装包下载源"
+MSG_FINAL_SOURCES="最终下载源: %s"
 MSG_SOURCE_FORCED="已指定下载源: %s"
 MSG_ALL_SOURCES_FAIL="所有下载源均不可用, 请检查网络连接"
 MSG_STEP_VANILLA="准备原版 %s 客户端"
@@ -132,7 +144,7 @@ MSG_REPACK_STRIP="移除 META-INF (去签名)"
 MSG_REPACK_MERGE="合并 MITE class 文件"
 MSG_REPACK_ZIP="打包为 %s"
 MSG_STEP_FML="注入 FishModLoader %s"
-MSG_FML_LATEST="从 GitHub 获取最新版本: %s"
+MSG_FML_LATEST="从 %s 获取最新版本: %s"
 MSG_FML_API_FAIL="GitHub API 不可达, 回退到内置版本 %s"
 MSG_STEP_JSON="生成版本配置 %s"
 MSG_JSON_FIX_VER="已修正上游版本号错误: fishmodloader %s -> %s"
@@ -203,6 +215,8 @@ Options:
   --version              Print script version
   --help                 Show this help
 
+Interactive mode asks: install mode / install paths (empty = default) / download sources (with speed-test option).
+
 Source names:
   vanilla: official | bmclapi
   FML    : github | ghproxy | gh-proxy | ghfast | hk
@@ -226,11 +240,19 @@ MSG_MODE_BOTH="Client + Server"
 MSG_PROMPT_CHOICE="Enter number"
 MSG_INVALID_CHOICE="Invalid choice, try again"
 MSG_DEFAULT_TAG="(default)"
+MSG_ASK_MC_DIR="Game install directory (leave empty for default)"
+MSG_ASK_SERVER_DIR="Server install directory (leave empty for default)"
 MSG_SPEEDTEST_HEAD="Testing download sources"
+MSG_SPEEDTEST_CATEGORY="Speed-test category: %s"
 MSG_SPEEDTEST_SKIP="Speed test skipped"
 MSG_SPEEDTEST_ITEM="  %-22s %s"
 MSG_SPEEDTEST_FAIL="unreachable"
-MSG_SPEEDTEST_PICK="Fastest source: %s"
+MSG_SOURCE_ASK="Pick download sources"
+MSG_SOURCE_AUTO="Auto speed-test, pick fastest (recommended)"
+MSG_SRC_LABEL_VANILLA="Vanilla assets source"
+MSG_SRC_LABEL_FML="FishModLoader source"
+MSG_SRC_LABEL_MITE="MITE bundle source"
+MSG_FINAL_SOURCES="Final sources: %s"
 MSG_SOURCE_FORCED="Using source: %s"
 MSG_ALL_SOURCES_FAIL="No download source reachable, please check your network"
 MSG_STEP_VANILLA="Preparing vanilla %s client"
@@ -252,7 +274,7 @@ MSG_REPACK_STRIP="Removing META-INF (unsigning)"
 MSG_REPACK_MERGE="Merging MITE class files"
 MSG_REPACK_ZIP="Packing into %s"
 MSG_STEP_FML="Injecting FishModLoader %s"
-MSG_FML_LATEST="Latest version from GitHub: %s"
+MSG_FML_LATEST="Latest version from %s: %s"
 MSG_FML_API_FAIL="GitHub API unreachable, falling back to bundled version %s"
 MSG_STEP_JSON="Writing version config %s"
 MSG_JSON_FIX_VER="Fixed upstream version mismatch: fishmodloader %s -> %s"
@@ -392,6 +414,48 @@ ask_yesno() {
       n|N|no|NO|No|否)   return 1 ;;
       *) printf '%s\n' "${C_YELLOW}${MSG_INVALID_CHOICE}${C_RESET}" >/dev/tty ;;
     esac
+  done
+}
+
+# ask_input <提示> <默认值> -> 回显输入 (空输入回显默认值; 自动展开开头的 ~)
+ask_input() {
+  local _prompt _default _ans
+  _prompt="$1"; _default="$2"
+  if [ "$TTY_OK" != "1" ]; then printf '%s\n' "$_default"; return; fi
+  printf '%s [%s]: ' "${C_BOLD}${_prompt}${C_RESET}" "$_default" >/dev/tty
+  if ! IFS= read -r _ans </dev/tty; then printf '%s\n' "$_default"; return; fi
+  [ -z "$_ans" ] && _ans="$_default"
+  if [ "${_ans#\~}" != "$_ans" ]; then _ans="$HOME${_ans#\~}"; fi
+  printf '%s\n' "$_ans"
+}
+
+# ask_source_category <类别> <标题> <源列表> -> 回显 "auto" 或用户选中的源名
+# 选项 1 固定为"自动测速选最快", 其余依次为列表里的源。空输入同选 1。
+ask_source_category() {
+  local _cat _label _list _i _s _n _ans
+  _cat="$1"; _label="$2"; _list="$3"
+  if [ "$TTY_OK" != "1" ]; then printf 'auto\n'; return; fi
+  printf '\n%s\n' "${C_BOLD}${_label}${C_RESET}" >/dev/tty
+  printf '  1) %s\n' "${C_GREEN}${MSG_SOURCE_AUTO}${C_RESET}" >/dev/tty
+  _i=2
+  for _s in $_list; do
+    printf '  %s) %s\n' "$_i" "$_s" >/dev/tty
+    _i=$((_i+1))
+  done
+  while :; do
+    printf '%s [1]: ' "$MSG_PROMPT_CHOICE" >/dev/tty
+    if ! IFS= read -r _ans </dev/tty; then printf 'auto\n'; return; fi
+    [ -z "$_ans" ] && { printf 'auto\n'; return; }
+    case "$_ans" in
+      1)             printf 'auto\n'; return ;;
+      *[!0-9]*|"")   : ;;
+      *)
+        _n=$((_ans - 1))
+        _s=$(printf '%s\n' $_list | sed -n "${_n}p")
+        [ -n "$_s" ] && { printf '%s\n' "$_s"; return; }
+        ;;
+    esac
+    printf '%s\n' "${C_YELLOW}${MSG_INVALID_CHOICE}${C_RESET}" >/dev/tty
   done
 }
 
@@ -688,6 +752,11 @@ speedtest_category() {
   local _cat _list _best _best_kbps _s _u _kbps
   _cat="$1"; _list="$2"
   _best=""; _best_kbps=0
+  case "$_cat" in
+    vanilla) log_dim "$(printf "$MSG_SPEEDTEST_CATEGORY" "$MSG_SRC_LABEL_VANILLA")" ;;
+    fml)     log_dim "$(printf "$MSG_SPEEDTEST_CATEGORY" "$MSG_SRC_LABEL_FML")" ;;
+    mite)    log_dim "$(printf "$MSG_SPEEDTEST_CATEGORY" "$MSG_SRC_LABEL_MITE")" ;;
+  esac
   for _s in $_list; do
     _u=$(probe_url "$_cat" "$_s")
     _kbps=$(measure_source "$_u") || _kbps=""
@@ -731,7 +800,9 @@ source_from_opt() {
 }
 
 select_sources() {
+  local _v_pick _f_pick _m_pick
   _v_forced=""; _f_forced=""; _m_forced=""
+  _v_pick=""; _f_pick=""; _m_pick=""
   if [ -n "$OPT_SOURCE" ]; then
     _v_forced=$(source_from_opt "$VANILLA_SOURCES") || _v_forced=""
     _f_forced=$(source_from_opt "$FML_SOURCES") || _f_forced=""
@@ -743,34 +814,79 @@ select_sources() {
     VANILLA_ORDER=$(promote_first "$_v_forced" "$VANILLA_SOURCES")
     FML_ORDER=$(promote_first "$_f_forced" "$FML_SOURCES")
     MITE_ORDER=$(promote_first "$_m_forced" "$MITE_SOURCES")
+    log_info "$(final_sources_summary)"
     return
   fi
 
+  # --- 交互询问: 每类可选手动指定源, 或选 1) 自动测速选最快。
+  # 只问当前模式实际用得到的类别; --source 已定死的类别不再问。
+  if [ "$TTY_OK" = "1" ] && [ "$OPT_YES" != "1" ] && [ "$OPT_NO_SPEEDTEST" != "1" ]; then
+    log_info "$MSG_SOURCE_ASK"
+    case "$MODE" in
+      client|both)
+        [ -z "$_v_forced" ] && _v_pick=$(ask_source_category vanilla "$MSG_SRC_LABEL_VANILLA" "$VANILLA_SOURCES")
+        [ -z "$_m_forced" ] && _m_pick=$(ask_source_category mite "$MSG_SRC_LABEL_MITE" "$MITE_SOURCES")
+        ;;
+    esac
+    [ -z "$_f_forced" ] && _f_pick=$(ask_source_category fml "$MSG_SRC_LABEL_FML" "$FML_SOURCES")
+  fi
+
+  # --- 测速 / 默认顺序 ---
+  SPEED_BEST_VANILLA=""; SPEED_BEST_FML=""; SPEED_BEST_MITE=""
   if [ "$OPT_NO_SPEEDTEST" = "1" ]; then
     log_info "$MSG_SPEEDTEST_SKIP"
     VANILLA_ORDER="$VANILLA_SOURCES"
     FML_ORDER="$FML_SOURCES"
     MITE_ORDER="$MITE_SOURCES"
   else
-    log_info "$MSG_SPEEDTEST_HEAD"
-    speedtest_category vanilla "$VANILLA_SOURCES"
-    speedtest_category fml "$FML_SOURCES"
-    speedtest_category mite "$MITE_SOURCES"
-    if [ -z "$SPEED_BEST_VANILLA" ] && [ -z "$SPEED_BEST_FML" ] && [ -z "$SPEED_BEST_MITE" ]; then
-      die "$MSG_ALL_SOURCES_FAIL"
+    # 需要测速的类别: 交互下是选了"自动测速"的; 非交互下是模式用得到的全部。
+    # 交互下手动指定了具体源的类别不测速。
+    _do_v=0; _do_f=0; _do_m=0
+    if [ "$TTY_OK" = "1" ] && [ "$OPT_YES" != "1" ]; then
+      case "$MODE" in
+        client|both) [ "$_v_pick" = "auto" ] && _do_v=1; [ "$_m_pick" = "auto" ] && _do_m=1 ;;
+      esac
+      [ "$_f_pick" = "auto" ] && _do_f=1
+    else
+      case "$MODE" in
+        server) _do_f=1 ;;
+        *)      _do_v=1; _do_f=1; _do_m=1 ;;
+      esac
     fi
+
+    if [ "$_do_v" = "1" ] || [ "$_do_f" = "1" ] || [ "$_do_m" = "1" ]; then
+      log_info "$MSG_SPEEDTEST_HEAD"
+      [ "$_do_v" = "1" ] && speedtest_category vanilla "$VANILLA_SOURCES"
+      [ "$_do_f" = "1" ] && speedtest_category fml "$FML_SOURCES"
+      [ "$_do_m" = "1" ] && speedtest_category mite "$MITE_SOURCES"
+      # 非交互全自动: 全部不可用才报错 (保持旧行为)。交互下单项失败就回退默认顺序。
+      if [ "$TTY_OK" != "1" ] || [ "$OPT_YES" = "1" ]; then
+        if [ -z "$SPEED_BEST_VANILLA" ] && [ -z "$SPEED_BEST_FML" ] && [ -z "$SPEED_BEST_MITE" ]; then
+          die "$MSG_ALL_SOURCES_FAIL"
+        fi
+      fi
+    fi
+
     VANILLA_ORDER="$VANILLA_SOURCES"; FML_ORDER="$FML_SOURCES"; MITE_ORDER="$MITE_SOURCES"
     [ -n "$SPEED_BEST_VANILLA" ] && VANILLA_ORDER=$(promote_first "$SPEED_BEST_VANILLA" "$VANILLA_SOURCES")
     [ -n "$SPEED_BEST_FML" ] && FML_ORDER=$(promote_first "$SPEED_BEST_FML" "$FML_SOURCES")
     [ -n "$SPEED_BEST_MITE" ] && MITE_ORDER=$(promote_first "$SPEED_BEST_MITE" "$MITE_SOURCES")
   fi
 
-  # --source 只指定了一类时, 另一类沿用测速结果
+  # --- 手动指定 (交互选中或 --source 指定) 提到最前 ---
+  [ -n "$_v_pick" ] && [ "$_v_pick" != "auto" ] && VANILLA_ORDER=$(promote_first "$_v_pick" "$VANILLA_SOURCES")
+  [ -n "$_f_pick" ] && [ "$_f_pick" != "auto" ] && FML_ORDER=$(promote_first "$_f_pick" "$FML_SOURCES")
+  [ -n "$_m_pick" ] && [ "$_m_pick" != "auto" ] && MITE_ORDER=$(promote_first "$_m_pick" "$MITE_SOURCES")
   [ -n "$_v_forced" ] && VANILLA_ORDER=$(promote_first "$_v_forced" "$VANILLA_SOURCES")
   [ -n "$_f_forced" ] && FML_ORDER=$(promote_first "$_f_forced" "$FML_SOURCES")
   [ -n "$_m_forced" ] && MITE_ORDER=$(promote_first "$_m_forced" "$MITE_SOURCES")
 
-  log_info "$(printf "$MSG_SPEEDTEST_PICK" "$(printf '%s' "$VANILLA_ORDER" | awk '{print $1}') / $(printf '%s' "$FML_ORDER" | awk '{print $1}') / $(printf '%s' "$MITE_ORDER" | awk '{print $1}')")"
+  log_info "$(final_sources_summary)"
+}
+
+# 回显最终生效的源 (首选 / 首选 / 首选)
+final_sources_summary() {
+  printf "$MSG_FINAL_SOURCES" "$(printf '%s' "$VANILLA_ORDER" | awk '{print $1}') / $(printf '%s' "$FML_ORDER" | awk '{print $1}') / $(printf '%s' "$MITE_ORDER" | awk '{print $1}')"
 }
 
 # ============================== 下载 ==============================
@@ -811,9 +927,9 @@ fetch_one() {
   _url="$1"; _dest="$2"; _s1="${3:-}"; _s256="${4:-}"; _sz="${5:-}"
   mkdir -p "$(dirname "$_dest")" || return 1
   _tmp="${_dest}.part"
-  # 大文件(>8MB 或体积未知)显示进度条: 否则 45MB 的服务端核心全程零输出, 用户
+  # 大文件(>1MB 或体积未知)显示进度条: 否则 45MB 的服务端核心全程零输出, 用户
   # 无法区分"正在下载"和"卡死"。小文件仍保持静默, 免得刷屏。
-  if [ -z "$_sz" ] || [ "${_sz:-0}" -gt 8388608 ]; then
+  if [ -z "$_sz" ] || [ "${_sz:-0}" -gt 1048576 ]; then
     # shellcheck disable=SC2086
     if ! curl $CURL_PROGRESS -o "$_tmp" "$_url"; then
       rm -f "$_tmp"; return 1
@@ -1247,7 +1363,7 @@ with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
 # 启动参数用 --assetsDir ${game_assets} 指向该 virtual 目录。
 
 download_assets() {
-  local _flat _adir _vdir _src _base _manifest _total _have _need _path _hash _size _dest _key _fail _urls _s
+  local _flat _adir _vdir _src _base _manifest _total _have _need _path _hash _size _dest _key _fail _urls _s _chunk _line _end _done _sub
   _flat="$1"; _adir="$2"
   _vdir="$_adir/virtual/$MC_ASSET_INDEX_ID"
   _src=$(printf '%s' "$VANILLA_ORDER" | awk '{print $1}')
@@ -1280,10 +1396,25 @@ download_assets() {
     printf '%s/%s/%s\t%s\n' "$_base" "$(printf '%s' "$_hash" | cut -c1-2)" "$_hash" "$_dest" >>"$_manifest"
   done <"$TMP_ROOT/assets.list"
 
-  log_dim "  $(printf "$MSG_DL_PROGRESS" "$_have" "$_total")"
-  [ "$_need" = "0" ] && return 0
+  if [ "$_need" = "0" ]; then
+    log_dim "  $(printf "$MSG_DL_PROGRESS" "$_have" "$_total")"
+    return 0
+  fi
 
-  fetch_batch "$_manifest" || true
+  # 分批并行下载: 每批结束即时回显已完成数。若整批一次性静默下载, 进度会一直
+  # 停在开头 "0 / N" 不动, 用户分不清"正在下载"还是"卡死"。
+  _done=0
+  while [ "$_done" -lt "$_need" ]; do
+    _line=$((_done + 1))
+    _end=$((_done + ASSETS_CHUNK))
+    [ "$_end" -gt "$_need" ] && _end="$_need"
+    _sub="$TMP_ROOT/assets.chunk"
+    sed -n "${_line},${_end}p" "$_manifest" >"$_sub"
+    fetch_batch "$_sub" >/dev/null 2>&1 || true
+    _done="$_end"
+    printf '\r'; printf "$MSG_DL_PROGRESS" "$((_have + _done))" "$_total"
+  done
+  printf '\n'
 
   # 复核并对失败项逐个重试(可换源)
   _fail=0
@@ -1458,7 +1589,7 @@ fml_query_latest() {
     case "$_s" in github) _url="https://api.github.com/repos/${FML_REPO}/releases/latest" ;; esac
     _api=$(curl -sL --max-time 15 "$_url" 2>/dev/null) || continue
     _tag=$(printf '%s' "$_api" | awk -F'"' '/"tag_name"/{print $4; exit}')
-    [ -n "$_tag" ] && { printf '%s' "$_tag"; return 0; }
+    [ -n "$_tag" ] && { printf '%s|%s' "$_tag" "$_s"; return 0; }
   done
   return 1
 }
@@ -1474,14 +1605,16 @@ fml_asset_urls() {
 
 # 确定版本并取得 installer
 prepare_fml() {
-  local _tag _name _sha _urls
+  local _tag _latest _latest_source _name _sha _urls
   if [ -n "$OPT_FML_VERSION" ]; then
     FML_VERSION="$OPT_FML_VERSION"
   else
-    _tag=$(fml_query_latest) || _tag=""
-    if [ -n "$_tag" ]; then
+    _latest=$(fml_query_latest) || _latest=""
+    _tag="${_latest%%|*}"
+    _latest_source="${_latest#*|}"
+    if [ -n "$_tag" ] && [ "$_tag" != "$_latest" ]; then
       FML_VERSION="${_tag#v}"
-      log_info "$(printf "$MSG_FML_LATEST" "$FML_VERSION")"
+      log_info "$(printf "$MSG_FML_LATEST" "$_latest_source" "$FML_VERSION")"
     else
       FML_VERSION="$FML_FALLBACK_VERSION"
       log_warn "$(printf "$MSG_FML_API_FAIL" "$FML_VERSION")"
@@ -2218,6 +2351,31 @@ main() {
   MC_DIR="${OPT_DIR:-$(default_mc_dir)}"
   SERVER_DIR="${OPT_SERVER_DIR:-$(pwd)/mite-server}"
 
+  # --- 交互: 开始执行前询问安装路径, 提示里明确写出不填时的默认路径 ---
+  if [ "$TTY_OK" = "1" ] && [ "$OPT_YES" != "1" ]; then
+    case "$MODE" in
+      client|both) MC_DIR=$(ask_input "$MSG_ASK_MC_DIR" "$MC_DIR") ;;
+    esac
+    case "$MODE" in
+      server|both) SERVER_DIR=$(ask_input "$MSG_ASK_SERVER_DIR" "$SERVER_DIR") ;;
+    esac
+    # 交互输入允许写 ~ 或相对路径, 统一归一化为绝对路径 (默认值本身已是绝对路径)
+    case "$MC_DIR" in
+      "~"*) MC_DIR="$HOME${MC_DIR#\~}" ;;
+    esac
+    case "$SERVER_DIR" in
+      "~"*) SERVER_DIR="$HOME${SERVER_DIR#\~}" ;;
+    esac
+    case "$MC_DIR" in
+      /*) : ;;
+      *)  MC_DIR="$(pwd)/$MC_DIR" ;;
+    esac
+    case "$SERVER_DIR" in
+      /*) : ;;
+      *)  SERVER_DIR="$(pwd)/$SERVER_DIR" ;;
+    esac
+  fi
+
   check_disk "$MC_DIR"
   select_sources
 
@@ -2264,12 +2422,14 @@ main() {
 
 # 只解析 FML 版本号(服务端单独安装时用, 不下 installer)
 prepare_fml_version_only() {
-  local _tag
+  local _tag _latest _latest_source
   if [ -n "$OPT_FML_VERSION" ]; then FML_VERSION="$OPT_FML_VERSION"; return; fi
-  _tag=$(fml_query_latest) || _tag=""
-  if [ -n "$_tag" ]; then
+  _latest=$(fml_query_latest) || _latest=""
+  _tag="${_latest%%|*}"
+  _latest_source="${_latest#*|}"
+  if [ -n "$_tag" ] && [ "$_tag" != "$_latest" ]; then
     FML_VERSION="${_tag#v}"
-    log_info "$(printf "$MSG_FML_LATEST" "$FML_VERSION")"
+    log_info "$(printf "$MSG_FML_LATEST" "$_latest_source" "$FML_VERSION")"
   else
     FML_VERSION="$FML_FALLBACK_VERSION"
     log_warn "$(printf "$MSG_FML_API_FAIL" "$FML_VERSION")"
@@ -2277,4 +2437,3 @@ prepare_fml_version_only() {
 }
 
 main "$@"
-
